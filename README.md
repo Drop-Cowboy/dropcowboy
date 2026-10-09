@@ -128,8 +128,8 @@ Every piece is one API with one key. Each link goes to its section of the
 No code? [Automation](https://www.dropcowboy.com/automation) is built into
 every Drop Cowboy account. It connects Drop Cowboy to 700+ other apps, like
 HubSpot, Salesforce, Shopify, Calendly and Google Sheets. Open
-[**Automation Hub**](https://www.dropcowboy.com/app/#/automation) in the
-dashboard to build a workflow.
+[**Automation**](https://www.dropcowboy.com/app/#/automation) in the
+dashboard's left menu to build a workflow.
 
 ## Build it with an AI assistant
 
