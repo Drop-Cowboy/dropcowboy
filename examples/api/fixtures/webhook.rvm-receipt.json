@@ -1,0 +1,59 @@
+{
+  "event_id": "2694f968-93fd-44ca-9b92-2110ed1ee61e",
+  "event": "contact.rvm.receipt",
+  "event_at": 1774041912000,
+  "data": {
+    "team_id": "3f6c2a1e-8b4d-4c7a-9e2f-5a1b3c4d6e7f",
+    "team": {
+      "team_id": "3f6c2a1e-8b4d-4c7a-9e2f-5a1b3c4d6e7f",
+      "name": "Example Realty"
+    },
+    "user_id": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+    "user": {
+      "user_id": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+      "username": "alex.morgan@example.com",
+      "first_name": "Alex",
+      "last_name": "Morgan",
+      "email": "alex.morgan@example.com"
+    },
+    "contact_id": "5a4b3c2d-1e0f-4a9b-8c7d-6e5f4a3b2c1d",
+    "contact": {
+      "contact_id": "5a4b3c2d-1e0f-4a9b-8c7d-6e5f4a3b2c1d",
+      "uid": null,
+      "main_phone": "+13125550142",
+      "first_name": "Jordan",
+      "last_name": "Rivera",
+      "mobile_phone": "+13125550142",
+      "tags": [],
+      "list_ids": []
+    },
+    "drop_id": "66f1c2a9e4b0a1d2c3f4e5a8",
+    "campaign_session": {
+      "team_id": "3f6c2a1e-8b4d-4c7a-9e2f-5a1b3c4d6e7f",
+      "user_id": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+      "campaign_id": null,
+      "contact_id": "5a4b3c2d-1e0f-4a9b-8c7d-6e5f4a3b2c1d",
+      "list_id": null,
+      "phone_number": "+13125550142",
+      "caller_id": "+12125550100",
+      "product_code": "rvm",
+      "dispo": {
+        "status": "failure",
+        "reason": "VoiceMail Full",
+        "delivered_at": null,
+        "dnc": false
+      }
+    },
+    "campaign_id": null,
+    "list_id": null,
+    "list": null,
+    "campaign_type": "rvm",
+    "status": "failure",
+    "reason": "VoiceMail Full",
+    "reason_code": 4002,
+    "to": "+13125550142",
+    "from": "+12125550100",
+    "proof_of_delivery_url": "https://api-v2.dropcowboy.com/campaign/public/receipts/MmEX1fWLLQRmf68M1Yg82jkHN3-P7y8VyDxXhnyHA50",
+    "receipt_ready_at": "2026-03-20T15:05:12.000Z"
+  }
+}

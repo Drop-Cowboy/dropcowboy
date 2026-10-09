@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="referrer" content="strict-origin-when-cross-origin">
+    <title>Sample CRM</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="/shared/crm.css">
+    <script type="module" src="/app.js"></script>
+</head>
+<body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="topbar">
+        <a class="brand" href="/contacts">Sample CRM</a>
+        <nav aria-label="Main">
+            <ul>
+                <li><a href="/contacts">Contacts</a></li>
+                <li><a href="/pipeline">Pipeline</a></li>
+                <li><a href="/inbox">Inbox</a></li>
+                <li><a href="/campaigns">Campaigns</a></li>
+                <li><a href="/phone">Phone</a></li>
+                <li><a href="/setup">Setup</a></li>
+            </ul>
+        </nav>
+        <div class="account" id="account"></div>
+    </header>
+    <div id="banner"></div>
+    <div class="layout">
+        <main id="main" tabindex="-1">
+            <p class="hint" role="status">Loading…</p>
+        </main>
+        <aside class="activity card" aria-labelledby="activity-title">
+            <h2 id="activity-title">Activity</h2>
+            <p class="hint" id="activity-status">Connecting to live events…</p>
+            <ol id="activity-list" aria-label="Recent activity"></ol>
+        </aside>
+    </div>
+    <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+    <noscript>This sample needs JavaScript.</noscript>
+</body>
+</html>

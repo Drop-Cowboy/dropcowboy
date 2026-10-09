@@ -1,0 +1,27 @@
+{
+  "description": "Sample values that appear in the public API reference and guides. They do not exist on any account. A request that carries one of them was copied from the docs and will fail, so the examples refuse to send it.",
+  "ids": [
+    "1b7e3c9a-4d2f-4a8b-9e6c-7f2a1d5b3c80",
+    "e2b6f9a3-5c1d-4e8b-a4f7-9c3e1b5d7a28",
+    "7d2a9e4b-1c6f-4b3a-8e5d-2f9c7a1b4e63",
+    "c4a7e1d2-9b3f-4a68-8d05-2e7f6b1a9c34",
+    "55b9e55e-23f1-4c16-8865-f4b6261ebeea",
+    "a9c3e8f1-4b2d-4a7c-8e9b-1c2d3e4f5a6b",
+    "0786a81e-e11e-4e53-ab64-71f552db23b3",
+    "234ecab5-1811-4c7d-a7a9-8c9ad9ca2e08",
+    "9c4e7a2f-1b8d-4f3e-a6c5-2d9b4e7f1a63"
+  ],
+  "phone_numbers": [
+    "+12125550100",
+    "+17735550188",
+    "+13125550100"
+  ],
+  "url_hosts": [
+    "hooks.example.com",
+    "cdn.example.com",
+    "media.example.com",
+    "files.example.com",
+    "receiver.example.com",
+    "your-server.example.com"
+  ]
+}

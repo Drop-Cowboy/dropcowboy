@@ -1,0 +1,13 @@
+# GitHub Actions only. The example dependencies are bumped in the source
+# repository and copied here, so a bump made here would be overwritten. The
+# same goes for examples-api.yml and sample-crm.yml: when a bump touches them,
+# make it at the source too, or the next copy reverts it.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ['*']

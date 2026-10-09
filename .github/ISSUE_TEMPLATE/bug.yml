@@ -1,0 +1,29 @@
+name: Example code bug
+description: Code in this repo doesn't do what its README says.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Issues are public. Never paste an API key or secret, a real phone number, or customer data. Use `+15555550123` and `YOUR_KEY` instead.
+  - type: input
+    id: where
+    attributes:
+      label: Which example
+      placeholder: examples/api/node, examples/sample-crm/server/python, ...
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: What you ran
+      description: The commands, and your OS and Node.js, Python or .NET version.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected, and what happened
+      description: Paste the output. Include the `reason_code` if a send failed.
+    validations:
+      required: true

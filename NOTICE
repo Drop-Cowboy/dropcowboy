@@ -1,0 +1,17 @@
+Drop Cowboy developer hub
+Copyright (c) 2026 Drop Cowboy
+
+What the MIT license covers
+
+The MIT license in LICENSE covers the files in this repository: the example
+code, the sample CRM, the tests, the skills and the documentation. You may
+copy, change and ship them under that license.
+
+What it does not cover
+
+The examples call Drop Cowboy APIs and services, and the sample CRM loads Drop
+Cowboy Building Blocks from https://webforms.dropcowboy.com when it runs.
+Those scripts, APIs and services are proprietary to Drop Cowboy. They are not
+part of this repository, they are not licensed under MIT, and your use of them
+is governed by the Drop Cowboy Terms of Service:
+https://www.dropcowboy.com/terms

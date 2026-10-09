@@ -1,0 +1,21 @@
+{
+  "drop_id": "b3e7a1c9-8d5f-4b2e-9a6c-1f4d7b3e8a52",
+  "team_id": "3f6c2a1e-8b4d-4c7a-9e2f-5a1b3c4d6e7f",
+  "session_id": "6b2e9d4a-8f1c-4a7e-9d3b-5c8f2a6e1d47",
+  "log_id": "2f8c4a6e-1b9d-4e3f-a7c5-8d2b6f4e9a13",
+  "contact_id": "5a4b3c2d-1e0f-4a9b-8c7d-6e5f4a3b2c1d",
+  "phone_number": "+13125550142",
+  "caller_id": "+12125550100",
+  "product_code": "rvm",
+  "status": "success",
+  "reason": "",
+  "reason_code": 0,
+  "quantity": 1,
+  "product_cost": 0.04,
+  "compliance_fee": 0,
+  "tts_fee": 0,
+  "dnc": false,
+  "attempt_date": "2026-03-20T15:04:05.000Z",
+  "foreign_id": "7c1e5a93-2d4b-4f68-a0b9-3e6d8c1f5a27",
+  "proof_of_delivery_url": "https://api-v2.dropcowboy.com/campaign/public/receipts/i9aI2nYpHEzKX0vysXph0ZGIYphbAduqA2PRRge0ICQ"
+}

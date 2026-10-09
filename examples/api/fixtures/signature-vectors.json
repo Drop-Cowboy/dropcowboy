@@ -1,0 +1,14 @@
+{
+  "description": "Signature test vectors shared by the Node, Python and .NET examples. Regenerate with: node fixtures/generate-vectors.mjs",
+  "algorithm": "HMAC-SHA256 over timestamp + \".\" + raw body, header X-Signature = \"sha256=\" + hex",
+  "tolerance_seconds": 300,
+  "secret": "e4b1c7a9-3f2d-4e8b-9a6c-5d1f8b2e7c30",
+  "other_secret": "7d2f9b4e-6a1c-4f83-b5e0-9c3a8d1f6e42",
+  "timestamp": "1774041960",
+  "now_seconds_valid": 1774041990,
+  "now_seconds_stale": 1774042261,
+  "raw_body": "{\"event_id\":\"2694f968-93fd-44ca-9b92-2110ed1ee61e\",\"event\":\"contact.rvm.status\",\"event_at\":1774041912000,\"data\":{\"team_id\":\"3f6c2a1e-8b4d-4c7a-9e2f-5a1b3c4d6e7f\",\"contact_id\":\"5a4b3c2d-1e0f-4a9b-8c7d-6e5f4a3b2c1d\",\"drop_id\":\"b3e7a1c9-8d5f-4b2e-9a6c-1f4d7b3e8a52\",\"campaign_id\":null,\"campaign_type\":\"rvm\",\"status\":\"success\",\"reason\":\"\",\"reason_code\":0,\"to\":\"+13125550142\",\"from\":\"+12125550100\"}}",
+  "signature": "sha256=e85f619d16c3a6ccdb54846a3d7fdf556fd9703c5d94b76740b7bb7470b1bebc",
+  "tampered_raw_body": "{\"event_id\":\"2694f968-93fd-44ca-9b92-2110ed1ee61e\",\"event\":\"contact.rvm.status\",\"event_at\":1774041912000,\"data\":{\"team_id\":\"3f6c2a1e-8b4d-4c7a-9e2f-5a1b3c4d6e7f\",\"contact_id\":\"5a4b3c2d-1e0f-4a9b-8c7d-6e5f4a3b2c1d\",\"drop_id\":\"b3e7a1c9-8d5f-4b2e-9a6c-1f4d7b3e8a52\",\"campaign_id\":null,\"campaign_type\":\"rvm\",\"status\":\"failure\",\"reason\":\"\",\"reason_code\":0,\"to\":\"+13125550142\",\"from\":\"+12125550100\"}}",
+  "signature_from_other_secret": "sha256=59719257b2a6653aa4cc5c6ebaab15d93291316fb5b5789d6895f24d13b8c4cd"
+}

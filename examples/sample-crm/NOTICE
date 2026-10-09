@@ -1,0 +1,29 @@
+Drop Cowboy sample CRM
+Copyright (c) 2026 Drop Cowboy
+
+What the MIT license covers
+
+The MIT license in LICENSE covers only the files in this folder and its
+subfolders: the sample servers, the front-ends, the shared modules, the
+conformance suite, the tests and the documentation. You may copy, change and
+ship them under that license.
+
+What it does not cover
+
+When it runs, the sample loads Drop Cowboy Building Blocks (The Dock, the
+contact card, the pipeline board, the shared inbox, the campaign hub, the
+phone hub and others) from https://webforms.dropcowboy.com, and it calls Drop
+Cowboy APIs and services. Those scripts, APIs and services are proprietary to
+Drop Cowboy. They are not part of this sample, they are not licensed under MIT,
+and your use of them is governed by the Drop Cowboy Terms of Service:
+https://www.dropcowboy.com/terms
+
+No Drop Cowboy source code is included in this folder. The sample refers to
+Building Blocks only by URL and loads them in the browser at runtime.
+
+Third-party packages
+
+The sample's package.json, requirements.txt and requirements-dev.txt files
+list open-source dependencies (for example Express, React, Flask). They are
+installed from their public registries under their own licenses and are not
+included in this folder.

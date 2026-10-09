@@ -1,0 +1,326 @@
+{
+  "description": "Building Blocks CDN bundles. integrity is the SRI hash of each file.",
+  "esbuild": "0.27.7",
+  "target": "es2021",
+  "dependencies": {
+    "@fortawesome/free-regular-svg-icons": "7.2.0",
+    "@fortawesome/free-solid-svg-icons": "7.2.0",
+    "@lit/reactive-element": "2.1.2",
+    "debug": "4.4.3",
+    "events": "3.3.0",
+    "jssip": "3.13.8",
+    "lit": "3.3.3",
+    "lit-element": "4.2.2",
+    "lit-html": "3.3.3",
+    "ms": "2.1.3",
+    "sdp-transform": "2.15.0"
+  },
+  "files": [
+    {
+      "file": "dropcowboy-campaign-hub.js",
+      "cdn_files": [
+        "dropcowboy-campaign-hub.js",
+        "dropcowboy-campaign-hub.min.js"
+      ],
+      "bundle": "campaigns",
+      "kind": "block",
+      "package": "@dropcowboy/embed-campaigns",
+      "version": "0.0.0",
+      "bytes": 117539,
+      "integrity": "sha384-ucuXv6P5XPNDaGDBJzzX0/ebsIMR3dwMKX6/GuyBIe586KPzy60UBpboJj2/3qYe",
+      "elements": [
+        "dc-campaign-status",
+        "dc-campaign-hub",
+        "dc-campaign-list"
+      ],
+      "autoload": [
+        "dc-campaign-status",
+        "dc-campaign-hub",
+        "dc-campaign-list"
+      ],
+      "namespaces": [
+        "DropCowboy.campaigns"
+      ],
+      "globals": [
+        "DropCowboyCampaigns"
+      ]
+    },
+    {
+      "file": "dropcowboy-campaigns.js",
+      "cdn_files": [
+        "dropcowboy-campaigns.js",
+        "dropcowboy-campaigns.min.js"
+      ],
+      "bundle": "campaigns",
+      "kind": "block",
+      "package": "@dropcowboy/embed-campaigns",
+      "version": "0.0.0",
+      "bytes": 117539,
+      "integrity": "sha384-ucuXv6P5XPNDaGDBJzzX0/ebsIMR3dwMKX6/GuyBIe586KPzy60UBpboJj2/3qYe",
+      "elements": [
+        "dc-campaign-status",
+        "dc-campaign-hub",
+        "dc-campaign-list"
+      ],
+      "autoload": [
+        "dc-campaign-status",
+        "dc-campaign-hub",
+        "dc-campaign-list"
+      ],
+      "namespaces": [
+        "DropCowboy.campaigns"
+      ],
+      "globals": [
+        "DropCowboyCampaigns"
+      ]
+    },
+    {
+      "file": "dropcowboy-contact-hub.js",
+      "cdn_files": [
+        "dropcowboy-contact-hub.js",
+        "dropcowboy-contact-hub.min.js"
+      ],
+      "bundle": "contacts",
+      "kind": "block",
+      "package": "@dropcowboy/embed-contacts",
+      "version": "0.0.0",
+      "bytes": 131550,
+      "integrity": "sha384-cUiBmIx9R+ysVvpM8fjfcIrBT3LMbr0jM1KKvLM6CvE/Z3oMgBYpF52wk6MkZOh3",
+      "elements": [
+        "dc-contact-card",
+        "dc-contact-timeline",
+        "dc-pipeline-board",
+        "dc-contact-hub"
+      ],
+      "autoload": [
+        "dc-contact-card",
+        "dc-contact-timeline",
+        "dc-pipeline-board",
+        "dc-contact-hub"
+      ],
+      "namespaces": [
+        "DropCowboy.contacts"
+      ],
+      "globals": [
+        "DropCowboyContacts"
+      ]
+    },
+    {
+      "file": "dropcowboy-contacts.js",
+      "cdn_files": [
+        "dropcowboy-contacts.js",
+        "dropcowboy-contacts.min.js"
+      ],
+      "bundle": "contacts",
+      "kind": "block",
+      "package": "@dropcowboy/embed-contacts",
+      "version": "0.0.0",
+      "bytes": 131550,
+      "integrity": "sha384-cUiBmIx9R+ysVvpM8fjfcIrBT3LMbr0jM1KKvLM6CvE/Z3oMgBYpF52wk6MkZOh3",
+      "elements": [
+        "dc-contact-card",
+        "dc-contact-timeline",
+        "dc-pipeline-board",
+        "dc-contact-hub"
+      ],
+      "autoload": [
+        "dc-contact-card",
+        "dc-contact-timeline",
+        "dc-pipeline-board",
+        "dc-contact-hub"
+      ],
+      "namespaces": [
+        "DropCowboy.contacts"
+      ],
+      "globals": [
+        "DropCowboyContacts"
+      ]
+    },
+    {
+      "file": "dropcowboy-dialer.js",
+      "cdn_files": [
+        "dropcowboy-dialer.js",
+        "dropcowboy-dialer.min.js"
+      ],
+      "bundle": "dialer",
+      "kind": "block",
+      "package": "@dropcowboy/embed-dialer",
+      "version": "0.1.0",
+      "bytes": 326456,
+      "integrity": "sha384-wg/XhDMjXoJyTbGoCh5BaMlGobM+6972+sE67snhNCZwxckzljCxp36R7Bkxfrai",
+      "elements": [
+        "dc-softphone",
+        "dc-mini-dialer",
+        "dc-screen-pop"
+      ],
+      "autoload": [
+        "dc-softphone",
+        "dc-mini-dialer",
+        "dc-screen-pop"
+      ],
+      "namespaces": [
+        "DropCowboy.dialer"
+      ],
+      "globals": [
+        "DropCowboyDialer"
+      ]
+    },
+    {
+      "file": "dropcowboy-dock.js",
+      "cdn_files": [
+        "dropcowboy-dock.js",
+        "dropcowboy-dock.min.js"
+      ],
+      "bundle": "dock",
+      "kind": "block",
+      "package": "@dropcowboy/embed-dock",
+      "version": "0.0.0",
+      "bytes": 545656,
+      "integrity": "sha384-AWAXK7zG8iVbSLLjpkv/HlKSvBrDpzbPq8EYJhVPhDj6RpEOc2o6EqDNL5K2FLKC",
+      "elements": [
+        "dc-dock",
+        "dc-softphone",
+        "dc-mini-dialer",
+        "dc-screen-pop",
+        "dc-messenger",
+        "dc-shared-inbox",
+        "dc-contact-card",
+        "dc-contact-timeline",
+        "dc-pipeline-board",
+        "dc-contact-hub",
+        "dc-campaign-status",
+        "dc-campaign-hub"
+      ],
+      "autoload": [
+        "dc-dock"
+      ],
+      "namespaces": [
+        "DropCowboy.dock"
+      ],
+      "globals": []
+    },
+    {
+      "file": "dropcowboy-messenger.js",
+      "cdn_files": [
+        "dropcowboy-messenger.js",
+        "dropcowboy-messenger.min.js"
+      ],
+      "bundle": "messenger",
+      "kind": "block",
+      "package": "@dropcowboy/embed-messenger",
+      "version": "0.1.0",
+      "bytes": 89617,
+      "integrity": "sha384-wJKPTFFUKOwVY0l8eFr7uRmK8akRH4IoPW0BN9X4FWqvoWrCilOUilB452dp7wBf",
+      "elements": [
+        "dc-messenger"
+      ],
+      "autoload": [
+        "dc-messenger"
+      ],
+      "namespaces": [
+        "DropCowboy.messenger"
+      ],
+      "globals": [
+        "DropCowboyMessenger"
+      ]
+    },
+    {
+      "file": "dropcowboy-phone-hub.js",
+      "cdn_files": [
+        "dropcowboy-phone-hub.js",
+        "dropcowboy-phone-hub.min.js"
+      ],
+      "bundle": "phone-hub",
+      "kind": "block",
+      "package": "@dropcowboy/embed-phone-hub",
+      "version": "0.0.0",
+      "bytes": 127623,
+      "integrity": "sha384-6XLp4Bn3TWE7jhhuUGcKv3z4wIiz/Nk6mpJiWwzz32D8ZaXDDgtNhrVI8ioOK/rQ",
+      "elements": [
+        "dc-phone-hub",
+        "dc-number-picker"
+      ],
+      "autoload": [
+        "dc-phone-hub",
+        "dc-number-picker"
+      ],
+      "namespaces": [
+        "DropCowboy.phoneHub"
+      ],
+      "globals": [
+        "DropCowboyPhoneHub"
+      ]
+    },
+    {
+      "file": "dropcowboy-receptionist.js",
+      "cdn_files": [
+        "dropcowboy-receptionist.js",
+        "dropcowboy-receptionist.min.js"
+      ],
+      "bundle": "receptionist",
+      "kind": "block",
+      "package": "@dropcowboy/embed-receptionist",
+      "version": "0.1.0",
+      "bytes": 300975,
+      "integrity": "sha384-Q9W8qXgRux/FIfqdHw3AxQ9UccHOjnOKEDCmlAAmuDjOz42Iz5ioelNGbLBvmIda",
+      "elements": [
+        "dc-receptionist"
+      ],
+      "autoload": [
+        "dc-receptionist"
+      ],
+      "namespaces": [
+        "DropCowboy.receptionist"
+      ],
+      "globals": [
+        "DropCowboyReceptionist"
+      ]
+    },
+    {
+      "file": "dropcowboy-recording-studio.js",
+      "cdn_files": [
+        "dropcowboy-recording-studio.js",
+        "dropcowboy-recording-studio.min.js"
+      ],
+      "bundle": "recording-studio",
+      "kind": "block",
+      "package": "@dropcowboy/embed-recording-studio",
+      "version": "0.0.0",
+      "bytes": 103752,
+      "integrity": "sha384-cbC9L0BRwH8NOtbNyqn4t9eWYVz60Rbkku05zCEt1JsXiYJiB1m7LMwtkjrp2ML8",
+      "elements": [
+        "dc-recording-studio"
+      ],
+      "autoload": [
+        "dc-recording-studio"
+      ],
+      "namespaces": [
+        "DropCowboy.studio"
+      ],
+      "globals": []
+    },
+    {
+      "file": "dropcowboy-shared-inbox.js",
+      "cdn_files": [
+        "dropcowboy-shared-inbox.js",
+        "dropcowboy-shared-inbox.min.js"
+      ],
+      "bundle": "shared-inbox",
+      "kind": "block",
+      "package": "@dropcowboy/embed-shared-inbox",
+      "version": "0.0.0",
+      "bytes": 109337,
+      "integrity": "sha384-q+4vLOUI1Vh2VJp9ZsbxZ8Da/MSBF7YOsmusIJpgGQwspSQiM2XXFv/3q360obGz",
+      "elements": [
+        "dc-shared-inbox"
+      ],
+      "autoload": [
+        "dc-shared-inbox"
+      ],
+      "namespaces": [
+        "DropCowboy.inbox"
+      ],
+      "globals": []
+    }
+  ]
+}

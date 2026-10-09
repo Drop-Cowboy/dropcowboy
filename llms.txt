@@ -1,0 +1,42 @@
+# Drop Cowboy
+
+> The Communication Platform Built Around Ringless Voicemail. One REST API at https://api-v2.dropcowboy.com for ringless voicemail, texts, voice calls, email, AI voice agents and embeddable Building Blocks. Authenticate with the x-key and x-secret headers. Sends answer 202 (queued); results arrive on signed webhooks and callback_url. There is no npm SDK for this API.
+
+## Start here
+
+- [README](https://github.com/Drop-Cowboy/dropcowboy/blob/main/README.md): send a first ringless voicemail in five minutes
+- [AGENTS.md](https://github.com/Drop-Cowboy/dropcowboy/blob/main/AGENTS.md): the facts a coding agent needs
+- [Vibe coding](https://github.com/Drop-Cowboy/dropcowboy/blob/main/docs/vibe-coding.md): MCP setup and prompts
+- [Troubleshooting](https://github.com/Drop-Cowboy/dropcowboy/blob/main/docs/troubleshooting.md): start from the symptom
+
+## Concepts
+
+- [Ringless voicemail and consent](https://github.com/Drop-Cowboy/dropcowboy/blob/main/docs/concepts/ringless-voicemail-and-consent.md)
+- [Test numbers](https://github.com/Drop-Cowboy/dropcowboy/blob/main/docs/concepts/test-numbers.md)
+- [Send results](https://github.com/Drop-Cowboy/dropcowboy/blob/main/docs/concepts/send-results.md)
+- [Webhooks](https://github.com/Drop-Cowboy/dropcowboy/blob/main/docs/concepts/webhooks.md)
+- [Bring your own carrier and audio](https://github.com/Drop-Cowboy/dropcowboy/blob/main/docs/concepts/byoc-and-audio.md)
+- [Idempotency](https://github.com/Drop-Cowboy/dropcowboy/blob/main/docs/concepts/idempotency.md)
+
+## Code
+
+- [Quickstart](https://github.com/Drop-Cowboy/dropcowboy/tree/main/examples/api/quickstart): one Node.js file, no dependencies
+- [Node.js, Python and C# examples](https://github.com/Drop-Cowboy/dropcowboy/tree/main/examples/api)
+- [Sample CRM](https://github.com/Drop-Cowboy/dropcowboy/tree/main/examples/sample-crm)
+- [Building Block skills](https://github.com/Drop-Cowboy/dropcowboy/tree/main/skills)
+
+## Reference
+
+- [Developer hub](https://www.dropcowboy.com/developers)
+- [API docs](https://www.dropcowboy.com/developers/api)
+- [Every route on one page](https://www.dropcowboy.com/developers/api/quick-reference)
+- [OpenAPI spec](https://api-v2.dropcowboy.com/openapi.yaml)
+- [Outcomes (reason codes)](https://www.dropcowboy.com/developers/api/outcomes)
+- [Webhooks](https://www.dropcowboy.com/developers/api/webhooks)
+- [Errors and limits](https://www.dropcowboy.com/developers/api/errors-and-limits)
+
+## Optional
+
+- [Legacy v1 API](https://github.com/Drop-Cowboy/dropcowboy/tree/main/legacy)
+- [Changelog](https://www.dropcowboy.com/developers/changelog)
+- [System status](https://status.dropcowboy.com)

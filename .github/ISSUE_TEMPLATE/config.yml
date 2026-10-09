@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Help with your account, a send or a bill
+    url: mailto:support@dropcowboy.com
+    about: Email support. Issues here are public, so never paste keys, phone numbers or customer data.
+  - name: Report a security problem
+    url: https://github.com/Drop-Cowboy/dropcowboy/blob/main/SECURITY.md
+    about: Don't open an issue. Follow SECURITY.md.
+  - name: API docs
+    url: https://www.dropcowboy.com/developers/api
+    about: Every route, field and result code.

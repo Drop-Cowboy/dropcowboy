@@ -1,0 +1,24 @@
+{
+  "name": "dropcowboy-api-example-node",
+  "version": "1.0.0",
+  "description": "Send a ringless voicemail with the Drop Cowboy API and receive the result. Node.js example.",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.6.0"
+  },
+  "scripts": {
+    "receiver": "node --env-file=.env src/receiver.js",
+    "send:retail": "node --env-file=.env src/recipes/send-rvm-retail.js",
+    "send:byoc": "node --env-file=.env src/recipes/send-rvm-byoc.js",
+    "send:local-presence": "node --env-file=.env src/recipes/send-rvm-byoc-local-presence.js",
+    "send:tts": "node --env-file=.env src/recipes/send-rvm-tts.js",
+    "subscribe": "node --env-file=.env src/subscribe.js",
+    "upload-media": "node --env-file=.env src/upload-media.js",
+    "check-receiver": "node --env-file=.env src/check-receiver.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "express": "4.22.3"
+  }
+}

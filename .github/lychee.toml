@@ -1,0 +1,28 @@
+# Link check settings for .github/workflows/links.yml.
+
+max_retries = 3
+retry_wait_time = 5
+timeout = 30
+accept = ["200..=299", "403", "429"]
+
+exclude = [
+  # Placeholders in examples.
+  '^https?://([a-z0-9-]+\.)*example\.(com|org)',
+  '^https?://(localhost|127\.0\.0\.1)',
+  # API routes and the MCP endpoint answer only signed-in or POST requests.
+  # Every api-v2 path except /openapi.yaml, without lookahead, which lychee
+  # doesn't support.
+  '^https://api-v2\.dropcowboy\.com/?$',
+  '^https://api-v2\.dropcowboy\.com/[a-np-z]',
+  '^https://api\.dropcowboy\.com/',
+  '^https://mcp\.dropcowboy\.com/',
+  # Dashboard pages need a login.
+  '^https://www\.dropcowboy\.com/app/',
+  # Hosted Building Blocks scripts are checked by their own release process.
+  '^https://webforms\.dropcowboy\.com/',
+]
+
+exclude_path = [
+  "node_modules",
+  "examples/sample-crm/tests/e2e/cdn",
+]

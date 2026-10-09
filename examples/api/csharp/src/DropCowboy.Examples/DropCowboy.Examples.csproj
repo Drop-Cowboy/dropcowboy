@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>DropCowboy.Examples</RootNamespace>
+    <AssemblyName>DropCowboy.Examples</AssemblyName>
+  </PropertyGroup>
+</Project>
