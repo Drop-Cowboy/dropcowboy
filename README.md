@@ -125,8 +125,11 @@ Every piece is one API with one key. Each link goes to its section of the
 - [Building Blocks](https://www.dropcowboy.com/developers/building-blocks): a dialer, messenger and receptionist you drop into your own app
 - [Bring your own carrier](https://www.dropcowboy.com/developers/api/bring-your-own-carrier): send through your own phone company and numbers
 
-No code? Drop Cowboy is on [Zapier](https://zapier.com/apps/drop-cowboy/integrations).
-Any tool that can make a web request and receive a webhook works too.
+No code? [Automation](https://www.dropcowboy.com/automation) is built into
+every Drop Cowboy account. It connects Drop Cowboy to 700+ other apps, like
+HubSpot, Salesforce, Shopify, Calendly and Google Sheets. Open
+[**Automation Hub**](https://www.dropcowboy.com/app/#/automation) in the
+dashboard to build a workflow.
 
 ## Build it with an AI assistant
 
