@@ -1,0 +1,112 @@
+# Tests for examples/api. Lives at .github/workflows/examples-api.yml in the
+# repository that publishes the examples; scripts/sync-to-hub.mjs puts it
+# there. Every suite runs offline against a mock API, so no job needs
+# credentials. The public content check and secret scanning for the whole
+# repository are in .github/workflows/secret-scan.yml.
+#
+# Actions are pinned to commit SHAs; the comment after each is its release.
+
+name: API examples
+
+on:
+  pull_request:
+    paths:
+      - 'examples/api/**'
+      - '.github/workflows/examples-api.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'examples/api/**'
+      - '.github/workflows/examples-api.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: examples-api-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The zero-dependency quickstart and the Node.js recipes, on the oldest and
+  # newest Node.js they support.
+  node:
+    name: Node.js ${{ matrix.node }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20', '22']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: examples/api/node/package-lock.json
+
+      - name: Quickstart tests
+        working-directory: examples/api/quickstart
+        run: npm test
+
+      - name: Install the Node.js recipes
+        working-directory: examples/api/node
+        run: npm ci
+
+      - name: Node.js recipe tests
+        working-directory: examples/api/node
+        run: npm test
+
+  python:
+    name: Python ${{ matrix.python }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.9', '3.13']
+    defaults:
+      run:
+        working-directory: examples/api/python
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: examples/api/python/requirements-dev.txt
+
+      - name: Install
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Lint
+        run: python -m flake8 .
+
+      - name: Tests
+        run: python -m pytest
+
+  csharp:
+    name: C# (.NET 8)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: examples/api/csharp
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Tests
+        run: dotnet test

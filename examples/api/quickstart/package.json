@@ -1,0 +1,17 @@
+{
+  "name": "dropcowboy-rvm-quickstart",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Send one ringless voicemail with the Drop Cowboy API and receive the result. No dependencies.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node quickstart.js",
+    "listen": "node quickstart.js listen",
+    "check-receiver": "node quickstart.js check-receiver",
+    "test": "node --test"
+  },
+  "license": "MIT"
+}

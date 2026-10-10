@@ -1,0 +1,57 @@
+# gitleaks settings for this repository: the default rules, minus the
+# placeholder values the tests and docs use on purpose.
+#
+#   gitleaks dir . --config .gitleaks.toml
+#
+# Real Drop Cowboy API secrets and webhook signing secrets are UUIDs, so UUIDs
+# are never allowed as a class. Only the exact test values below are. A new
+# test secret has to be added here by value.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Fixed test keys, secrets and Idempotency-Keys in examples/api tests, fixtures and docs"
+regexTarget = "secret"
+regexes = [
+    '''^0b9d4f7a-2c6e-4a18-9e3b-7d5a1c8f4e62$''',
+    '''^3a8d6f1c-9e4b-4c27-a5d0-7b2e9f6c1a84$''',
+    '''^3b9f1c7e-5a2d-4e84-9c06-7d1b3e5f8a29$''',
+    '''^4d8f2b6a-9c1e-4a7d-b3f5-6e2a8c4d1b93$''',
+    '''^4f8c2e1a-7b3d-4a9e-8c6f-2d1e5b7a9c34$''',
+    '''^5e1a9c3f-7b2d-4f8e-a6c4-1d9b3e5f7a62$''',
+    '''^6f1d3c8a-2b7e-4a95-8c4d-1e9f3a7b5c20$''',
+    '''^7d2f9b4e-6a1c-4f83-b5e0-9c3a8d1f6e42$''',
+    '''^7f3c9a1e-5b2d-4e8f-a6c4-9d1b3e7f5a20$''',
+    '''^8d4f2a6c-1e3b-4a57-9c80-2b5d7f1a3e69$''',
+    '''^9f2b7d4e-1a6c-4e8b-b3d5-7c9e2a4f6b18$''',
+    '''^b8a4e2d6-7c3f-4915-a0e8-4d2b6f9c1a73$''',
+    '''^b8d2f6a4-3c9e-4a1f-8e7d-5b3c9f1a7e26$''',
+    '''^c1e7a3f9-5b2d-4c8e-9a6f-3d7b1e5c9a42$''',
+    '''^c3d5e7f9-1a2b-4c6d-8e0f-2a4c6e8b0d13$''',
+    '''^c8e2a4f6-1d3b-4a9c-8e7f-2b5d9a1c6e34$''',
+    '''^d0c4a8e2-6b1f-4d37-9a05-7e3b5c1f9a99$''',
+    '''^d1f3a8e2-7c4b-4f9a-9d22-9c1e2f3a4b5c$''',
+    '''^e4b1c7a9-3f2d-4e8b-9a6c-5d1f8b2e7c30$''',
+]
+
+[[allowlists]]
+description = "A JWT header with nothing after it, which cannot be a real token"
+regexTarget = "secret"
+regexes = [
+    '''^eyJ[A-Za-z0-9_-]+\.$''',
+]
+
+[[allowlists]]
+description = "Test JWTs whose signature is readable text (e.g. 'signature'), so they cannot be real tokens"
+regexTarget = "match"
+regexes = [
+    '''eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.(c2lnbmF0dXJl|c2ln|bW9jay1zaWduYXR1cmU)\b''',
+]
+
+[[allowlists]]
+description = "Example responses in the docs, with the token cut short"
+regexTarget = "line"
+regexes = [
+    '''"token": "eyJ[A-Za-z0-9_-]+\.\.\."''',
+]
