@@ -225,6 +225,8 @@ dotnet run -- detect-twilio
 
 The recipe calls `DC_TO` from `TWILIO_FROM` with your own Twilio account. When the call is answered, Twilio sends a copy of the call audio to Detection with `<Start><Stream>`. Detection posts what it hears (a voicemail, the beep, a live person) to the receiver as signed webhooks, and the recipe updates the live call with Twilio's REST API. It plays your voicemail message on the beep, or your live message when a live person is detected, and nothing else: every other verdict is printed and ignored. It sends no ringless voicemail. Twilio is called over plain HTTPS with `HttpClient`, like the Drop Cowboy API: there is no Twilio SDK.
 
+Want a complete ringless voicemail or voice broadcast routine? Use the Drop Cowboy [campaigns API](https://www.dropcowboy.com/developers/api/campaigns). Detection is for teams that already run their own dialing and want sharper, more dependable detection events to build on.
+
 It acts at most once per call. In order:
 
 1. Checks every setting before any request, and prints every problem it finds.

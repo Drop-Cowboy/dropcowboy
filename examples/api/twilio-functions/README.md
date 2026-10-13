@@ -14,9 +14,15 @@ logic in one file.
 | `detection-voice` | Protected | Runs when a call is answered. Returns TwiML that sends a copy of the call's audio to Detection. |
 | `detection-webhook` | Public, with a token | Receives every Detection event and runs your `onEvent` function. |
 
-This is a demonstration of receiving an event and responding to it. It is not a
-delivery pipeline. What a verdict means, how often to act, what to do about
-retries and how to keep a campaign robust are yours to build.
+This is a starting point for receiving an event and responding to it, with your
+own logic in one file.
+
+> **Looking for a complete ringless voicemail or voice broadcast routine?** Use the
+> Drop Cowboy [REST API](https://www.dropcowboy.com/developers/api/campaigns). Campaigns take care of lists,
+> scheduling, sending, results and proof of delivery, so you can ship the whole
+> routine in a few calls. Detection is the precision tool for teams that already
+> run their own dialing and want sharper, more dependable detection events to
+> build on.
 
 ## What happens on a call
 

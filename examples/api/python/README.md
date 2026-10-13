@@ -213,6 +213,8 @@ It plays your message on the beep, or the live message when a live person is det
 nothing else: the recipe redirects the live call to play the message, then hangs up. Twilio is
 called over plain HTTPS with `requests`, like the Drop Cowboy API. No Twilio SDK.
 
+Want a complete ringless voicemail or voice broadcast routine? Use the Drop Cowboy [campaigns API](https://www.dropcowboy.com/developers/api/campaigns). Detection is for teams that already run their own dialing and want sharper, more dependable detection events to build on.
+
 What it does, in order:
 
 1. Checks every setting and lists every problem before any request.

@@ -171,6 +171,13 @@ beep, the recipe redirects the live call with Twilio's REST API to play your
 message. If a live person answers, it plays your live message, or the voicemail
 message when you set none. It sends no ringless voicemail.
 
+> **Looking for a complete ringless voicemail or voice broadcast routine?** Use the
+> Drop Cowboy [REST API](https://www.dropcowboy.com/developers/api/campaigns). Campaigns take care of lists,
+> scheduling, sending, results and proof of delivery, so you can ship the whole
+> routine in a few calls. Detection is the precision tool for teams that already
+> run their own dialing and want sharper, more dependable detection events to
+> build on.
+
 ### What you need
 
 - **A Twilio account that is not a trial.** A trial account plays a notice and
@@ -251,8 +258,8 @@ events inside Twilio with nothing to host, deploy
 [`twilio-functions/`](twilio-functions/README.md) to your Twilio account with the
 Twilio CLI. It has two Twilio Functions: one returns the TwiML that forks the call
 to Detection, and one receives every event and runs an `onEvent` function that you
-edit. It is a demonstration of receiving an event and responding to it, and what
-you build on top is up to you. A Function cannot read the raw body, so it checks a
+edit. It is a starting point for receiving an event and responding to it; the
+logic you add on top is yours. A Function cannot read the raw body, so it checks a
 secret token in the webhook address rather than the signature; the README explains
 why.
 

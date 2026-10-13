@@ -199,6 +199,8 @@ npm run detect:twilio
 
 The recipe calls `DC_TO` from `TWILIO_FROM` with your own Twilio account. When the call is answered, Twilio sends a copy of the call audio to Detection with `<Start><Stream>`. Detection posts what it hears (a voicemail, the beep, a live person) to the receiver as signed webhooks, and the recipe updates the live call with Twilio's REST API: on the beep it plays your voicemail message, and to a live person it plays your live message. It sends no ringless voicemail. Twilio is called over plain HTTPS with `fetch`, like the Drop Cowboy API: there is no Twilio SDK.
 
+Want a complete ringless voicemail or voice broadcast routine? Use the Drop Cowboy [campaigns API](https://www.dropcowboy.com/developers/api/campaigns). Detection is for teams that already run their own dialing and want sharper, more dependable detection events to build on.
+
 It acts at most once per call. In order:
 
 1. Checks every setting before any request, and prints every problem it finds.
