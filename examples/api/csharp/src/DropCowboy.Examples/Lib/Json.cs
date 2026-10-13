@@ -72,6 +72,11 @@ public static class Json
         return Get(node, path) is JsonValue value && value.TryGetValue<long>(out var number) ? number : null;
     }
 
+    public static double? Double(JsonNode? node, params string[] path)
+    {
+        return Get(node, path) is JsonValue value && value.TryGetValue<double>(out var number) ? number : null;
+    }
+
     public static bool? Bool(JsonNode? node, params string[] path)
     {
         return Get(node, path) is JsonValue value && value.TryGetValue<bool>(out var flag) ? flag : null;

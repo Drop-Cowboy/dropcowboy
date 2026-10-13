@@ -17,11 +17,13 @@ What is here:
 | `dropcowboy_examples/recipes/send_rvm_byoc.py` | Send from your own number on your own carrier. |
 | `dropcowboy_examples/recipes/send_rvm_byoc_local_presence.py` | Put several numbers on a phone line and let the platform pick one per recipient. |
 | `dropcowboy_examples/recipes/send_rvm_tts.py` | Send text that is spoken for you. |
+| `dropcowboy_examples/recipes/detect_twilio.py` | Place a call through your own Twilio account and let Detection say when to play your message. See [Detection on your Twilio call](#detection-on-your-twilio-call). |
 | `subscribe.py` | Creates a webhook that delivers results to your receiver. Also lists, updates, rotates and deletes webhooks. |
 | `upload_media.py` | Uploads `DC_AUDIO_FILE` to your media library and prints its `media_id`. |
 | `check_receiver.py` | Posts a sample result to your own endpoints and explains the answer. Calls no API. |
 | `dropcowboy_examples/client.py`, `verify.py`, `config.py`, `audio.py`, `api.py` | The HTTP client, signature check, settings, audio choice and one function per route. |
 | `dropcowboy_examples/media.py`, `samples.py`, `hints.py` | The audio upload, the check that refuses sample values from our docs, and what to do for common reason codes. |
+| `dropcowboy_examples/twilio.py`, `detection.py`, `detection_receiver.py` | For detect-twilio: a small Twilio REST client and its signature check, the Detection signature check, the TwiML and the decision rules, and the receiver with its four routes. |
 
 ## Prerequisites
 
@@ -30,6 +32,7 @@ What is here:
 - A phone number you own, to receive the test voicemail.
 - For the result to reach you: a public HTTPS address that forwards to your computer (a tunnel). See [Tunnel](#tunnel).
 - For the bring-your-own-carrier recipes: a carrier connected to your account. See [Bring your own carrier](https://www.dropcowboy.com/developers/api/bring-your-own-carrier).
+- For detect-twilio: a full (not trial) Twilio account with a number or verified caller ID on it, a Detection key or an API key that can create one, and a tunnel.
 
 ## Setup
 
@@ -200,6 +203,152 @@ no API key. Each answer gets one verdict:
 
 It exits 1 when any check fails.
 
+## Detection on your Twilio call
+
+This places a real phone call. Twilio bills the call and Drop Cowboy bills the Detection session.
+
+This recipe sends no ringless voicemail. It dials `DC_TO` from `TWILIO_FROM` through your own
+Twilio account and streams the call audio to Detection, which tells the recipe what answered.
+When the voicemail greeting ends with its beep, or a live person answers, the recipe redirects
+the live call to play your message, then hangs up. Twilio is called over plain HTTPS with
+`requests`, like the Drop Cowboy API. No Twilio SDK.
+
+What it does, in order:
+
+1. Checks every setting and lists every problem before any request.
+2. Uses `DC_DETECTION_KEY`, or, without it, creates a temporary Detection key with `DC_KEY` and
+   `DC_SECRET` (the key needs `balance:read` to list Detection keys and `account:write` to create
+   and delete them). It first deletes any key left over from a run
+   that was killed, found by its exact name, `Twilio detection recipe (temporary)`.
+3. Checks the Twilio account: it must be a full account, active, and `TWILIO_FROM` must be one of
+   its numbers or a verified caller ID on it.
+4. Starts its receiver on `PORT` and checks that `DC_PUBLIC_URL/health` reaches it.
+5. Creates the call. When it is answered, Twilio fetches TwiML from the receiver. The TwiML forks
+   the audio to Detection with `<Start><Stream>` and waits in silence.
+6. Acts once, on the first of these:
+   - `beep`: plays the voicemail message.
+   - a live-person verdict (any `type` starting with `speech.human.`, such as
+     `speech.human.unknown`) at or above `DC_LIVE_CONFIDENCE`: plays the live message.
+   - a `speech.voicemail.greeting` verdict: waits up to `DC_BEEP_WAIT_SECONDS` for the beep,
+     then plays the voicemail message anyway.
+   - a `speech.voicemail.full` or `speech.voicemail.not_setup` verdict: hangs up, because the
+     mailbox cannot take a message.
+   - `speech.silence`, `timeout`, or an `error` that is not recoverable: hangs up.
+   - `busy`, `no-answer`, `failed` or `canceled` from Twilio: nothing to do.
+
+   Any other verdict (`speech.ivr`, `speech.screening`, `speech.carrier.intercept`,
+   `speech.unknown`) is printed and not acted on.
+7. Prints a summary, then hangs up a call that is still up, deletes the temporary key and stops
+   the receiver. That last step runs on success, on an error and on Ctrl+C.
+
+Twilio trial accounts are not supported. They play a notice and wait for a key press before your
+TwiML runs, so Detection would hear the notice. Upgrade the account first.
+
+**The Detection key is in the TwiML, so it shows in the Twilio Console request logs.** Anyone
+who can read those logs can use the key. Use a key for this alone and delete it when you are
+done, or leave `DC_DETECTION_KEY` unset and let the recipe create a temporary key and delete it
+at the end. A temporary key also expires on its own after an hour.
+
+### Settings
+
+| Variable | Required | Meaning |
+|---|---|---|
+| `TWILIO_ACCOUNT_SID` | Yes | Your Twilio Account SID, `AC` and 32 hexadecimal characters. Only its last 4 characters are printed. |
+| `TWILIO_AUTH_TOKEN` | Yes | Your Twilio auth token. It signs in to Twilio and checks Twilio's signature. Never printed. |
+| `TWILIO_FROM` | Yes | The caller ID, in E.164: a number in the Twilio account or a verified caller ID on it. |
+| `DC_TO` | Yes | The number to call, in E.164. Use a number you own. |
+| `DC_PUBLIC_URL` | Yes | The `https://` address your tunnel prints, with no port other than 443 and no query string or fragment. Twilio and Detection both call it, and Detection calls only port 443. `localhost`, `.local` and private addresses are refused. |
+| `DC_DETECTION_KEY` | One of | A Detection key. Only its last 4 characters are printed. |
+| `DC_KEY`, `DC_SECRET` | One of | Used only without `DC_DETECTION_KEY`, to create and delete a temporary key. Needs `balance:read` (to list keys) and `account:write` (to create and delete them). |
+| `DC_VM_AUDIO_URL` | One of | A public `https://` `.mp3` or `.wav` played on the beep. |
+| `DC_VM_TEXT` | One of | Text spoken on the beep when `DC_VM_AUDIO_URL` is unset. 1,000 characters or fewer. |
+| `DC_LIVE_AUDIO_URL`, `DC_LIVE_TEXT` | No | The message for a live person, same rules. With neither, a live person hears the voicemail message. |
+| `DC_DETECTION_STRATEGY` | No | `standard` (default), `beep_only` or `live_check`, exactly, in lowercase. |
+| `DC_DETECTION_TIMEOUT_SEC` | No | 5 to 120, default 45. How long Detection listens. |
+| `DC_LIVE_CONFIDENCE` | No | 0 to 1, default 0.6. A live-person verdict (`speech.human.*`) below it is printed and not acted on. Keep it at 0.6 or lower: a short "hello" followed by a pause arrives as an early live-person verdict at 0.6. |
+| `DC_BEEP_WAIT_SECONDS` | No | 1 to 60, default 20. After a `speech.voicemail.greeting` verdict, how long to wait for the beep. |
+| `DC_RING_SECONDS` | No | 5 to 60, default 30. How long Twilio lets the phone ring. |
+| `DC_WAIT_SECONDS` | No | 60 to 600, default 180. The whole run, from creating the call to the end. `0` is refused here: this recipe has to listen. |
+| `PORT` | No | The receiver port, default 3000. |
+| `DC_DETECTION_URL`, `TWILIO_BASE_URL`, `DC_BASE_URL` | No | Where Detection, Twilio and the API are. Leave them unset. |
+
+`DC_WAIT_SECONDS` is shared with the other recipes. If your `.env` sets it to `0` for them,
+override it when you run this one.
+
+### Run it
+
+Start a tunnel to port 3000 (see [Tunnel](#tunnel)) and set `DC_PUBLIC_URL` to the `https://`
+address it prints. Then:
+
+```bash
+python -m dropcowboy_examples.recipes.detect_twilio
+```
+
+Use the base address only. The recipe adds the paths itself, and its receiver has these routes:
+
+- `GET /health`
+- `POST /twilio/voice`: Twilio asks for the TwiML. Signed by Twilio.
+- `POST /webhooks/detection`: Detection's events for this call. Signed with the Detection key.
+- `POST /twilio/status`: Twilio's status callback. Signed by Twilio.
+
+The routes only verify, dedupe, record and answer. The recipe reads what they recorded and makes
+the one Twilio request itself. Both signatures are checked against `DC_PUBLIC_URL`, not the address
+the request arrived at, because a tunnel changes that. A Detection event carries the run's
+`call_id`, and an event for any other `call_id` is ignored.
+
+A run that reaches the beep prints something like:
+
+```
+call_id: 5b2e8f14-9c3a-4d67-8e01-7a4c6f2b9d35
+Using DC_DETECTION_KEY ending in ...4f2a.
+Twilio account ...9c1e is active.
+TWILIO_FROM +13125550147 is a number in this Twilio account.
+Receiver listening on http://127.0.0.1:3000, reached through https://your-tunnel-address.example
+The tunnel reaches this receiver.
+Calling +13125550142 from +13125550147...
+Call created. CallSid: CA00000000000000000000000000000001
+Twilio asked for the TwiML. Streaming the call audio to Detection.
+Detection: speech.voicemail.greeting (confidence 0.91)
+Waiting up to 20 seconds for the beep.
+Beep: timestamp_ms=6420 duration_ms=380
+Playing the voicemail message.
+Twilio answered the update 212 ms after the receiver recorded the beep.
+Twilio call status: completed
+Summary:
+  outcome: voicemail_on_beep
+  ...
+```
+
+The summary's `outcome` is one of `voicemail_on_beep`, `voicemail_no_beep`, `live_person`,
+`voicemail_unavailable`, `no_answer_detected`, `detection_error`, `not_answered` (with Twilio's status),
+`ended_before_action` or `no_result`.
+
+It exits 0 for any outcome in the summary, 1 for a setup problem, a failed check, a request
+error or a clean-up step that failed (even after a good outcome, so a key left behind is never
+missed), and 130 on Ctrl+C, after the clean-up has run. A Twilio error prints its status, `code`,
+`message` and `more_info`, and for these codes a `What to do:` line:
+
+| Code | What to do |
+|---|---|
+| `21210`, `21212` | TWILIO_FROM must be a number in this Twilio account or a verified caller ID on it. |
+| `21215` | Twilio's Voice geographic permissions block calls to this country. Enable it in the Twilio Console. |
+| `21219` | Trial accounts can call only verified numbers. Upgrade the Twilio account to run this recipe. |
+| `20003` | Twilio rejected TWILIO_ACCOUNT_SID or TWILIO_AUTH_TOKEN. |
+
+When creating the temporary key is refused (`403`), the recipe prints the API's `detail` and
+code, and for these codes a `What to do:` line:
+
+| Code | What to do |
+|---|---|
+| `byoc-required` | Detection keys need Building Blocks on your account. Enable Building Blocks, then run this again. |
+| `team-not-verified` | Finish verifying your account in the dashboard, then run this again. |
+| `trial_feature_blocked` | Detection keys are not available on a trial account. Choose a plan, then run this again. |
+
+If no Detection result arrives before `DC_WAIT_SECONDS` ends, the recipe hangs up and says so,
+with the outcome `no_result`. Check that the Detection key is active and the balance covers
+Detection, and look for stream errors in the Twilio Console debugger. A refused key closes the
+stream before any webhook is sent, so "no webhook at all" usually means the key.
+
 ## Expected output
 
 A retail send with a tunnel, when the callback arrives:
@@ -313,6 +462,13 @@ HTTP. They need no network and no credentials. They cover the shared signature v
 request bodies of every recipe and audio source, the upload calls and the exact upload
 `Content-Type`, that sample values are refused before any request, each `check_receiver.py` verdict,
 and that secrets never reach the output.
+
+For detect-twilio, a second mock server plays Twilio, and the tests post signed Twilio and
+Detection requests to the recipe's own receiver, built from the fixtures. They cover the
+vectors in `../fixtures/detection-signature-vectors.json` and
+`../fixtures/twilio-signature-vectors.json`, every setting check, the exact TwiML and
+`Calls.json` body, each decision, the clean-up on success, on an error and on Ctrl+C, and that
+the auth token, the secret and the full Detection key never reach the output.
 
 ## Troubleshooting
 

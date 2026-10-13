@@ -1,0 +1,14 @@
+{
+  "description": "Detection webhook signature vectors for the detect-twilio recipe. Regenerate with: node fixtures/generate-vectors.mjs",
+  "algorithm": "HMAC-SHA256 keyed with the Detection API key over X-Timestamp (milliseconds) + \".\" + raw body, header X-Signature = \"v1=hmac-sha256,\" + hex",
+  "tolerance_ms": 300000,
+  "detection_key": "test-detection-key-not-a-real-credential-0042",
+  "other_detection_key": "test-detection-key-not-a-real-credential-0043",
+  "timestamp_ms": "1774041846420",
+  "now_ms_valid": 1774041876420,
+  "now_ms_stale": 1774042146421,
+  "raw_body": "{\"delivery_id\":\"f956b1e8-1b29-4543-915c-d5364c84852a\",\"event\":\"beep\",\"emitted_at\":\"2026-03-20T15:04:06.420Z\",\"session_id\":\"63c83cc6-91ec-4127-88d0-ea109c4c2738\",\"call_id\":\"fa6de30e-9e3a-40c4-97fc-1fdad5f21338\",\"app_id\":\"AC00000000000000000000000000000000\",\"source\":\"twilio\",\"twilio_call_sid\":\"CA00000000000000000000000000000001\",\"twilio_account_sid\":\"AC00000000000000000000000000000000\",\"twilio_stream_sid\":\"MZ00000000000000000000000000000001\",\"data\":{\"timestamp_ms\":6420,\"frequency_hz\":1000,\"duration_ms\":380,\"confidence\":0.94,\"is_final\":true}}",
+  "signature": "v1=hmac-sha256,2ec2ebb956c1e4d5bf40885754100d4a987b80cdedd041b463ebf5fd20eb6c59",
+  "tampered_raw_body": "{\"delivery_id\":\"f956b1e8-1b29-4543-915c-d5364c84852a\",\"event\":\"beep\",\"emitted_at\":\"2026-03-20T15:04:06.420Z\",\"session_id\":\"63c83cc6-91ec-4127-88d0-ea109c4c2738\",\"call_id\":\"fa6de30e-9e3a-40c4-97fc-1fdad5f21338\",\"app_id\":\"AC00000000000000000000000000000000\",\"source\":\"twilio\",\"twilio_call_sid\":\"CA00000000000000000000000000000001\",\"twilio_account_sid\":\"AC00000000000000000000000000000000\",\"twilio_stream_sid\":\"MZ00000000000000000000000000000001\",\"data\":{\"timestamp_ms\":6420,\"frequency_hz\":1000,\"duration_ms\":381,\"confidence\":0.94,\"is_final\":true}}",
+  "signature_from_other_key": "v1=hmac-sha256,22068459dc148a55d860aefec111b5d98ee69b62c1c854f1d2937c6ec4534dcb"
+}

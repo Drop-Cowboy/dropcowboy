@@ -16,6 +16,7 @@
     "subscribe": "node --env-file=.env src/subscribe.js",
     "upload-media": "node --env-file=.env src/upload-media.js",
     "check-receiver": "node --env-file=.env src/check-receiver.js",
+    "detect:twilio": "node --env-file=.env src/recipes/detect-twilio.js",
     "test": "node --test"
   },
   "dependencies": {

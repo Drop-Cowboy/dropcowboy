@@ -5,6 +5,7 @@ Send only to people who agreed to hear from you. Test with numbers you own.
 Tests point DC_BASE_URL at it. It records every request, in order, so a test can
 assert the exact calls a recipe made. It also plays the storage service that a
 signed upload URL points at, so it takes PUT and keeps each request's raw bytes.
+The detect-twilio tests run a second one as Twilio: same routes table, form bodies.
 """
 from __future__ import annotations
 
@@ -13,7 +14,7 @@ import threading
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, parse_qsl, urlsplit
 
 Response = Tuple[int, Any, Optional[Dict[str, str]]]
 
@@ -26,6 +27,10 @@ class Recorded:
     headers: Dict[str, str]
     body: Any
     raw: bytes = b""
+
+    def form(self) -> List[Tuple[str, str]]:
+        """A form-encoded body as (name, value) pairs, in order, repeated names kept."""
+        return parse_qsl(self.raw.decode("utf-8"), keep_blank_values=True)
 
 
 Handler = Union[Response, Tuple[int, Any], Callable[[Recorded], Tuple]]

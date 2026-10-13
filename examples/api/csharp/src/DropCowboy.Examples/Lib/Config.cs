@@ -30,7 +30,7 @@ public sealed class Config
                 continue;
             }
 
-            if (name.StartsWith("DC_", StringComparison.Ordinal) || name == "PORT")
+            if (name.StartsWith("DC_", StringComparison.Ordinal) || name.StartsWith("TWILIO_", StringComparison.Ordinal) || name == "PORT")
             {
                 values[name] = value;
             }

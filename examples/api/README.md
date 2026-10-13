@@ -6,6 +6,9 @@ Working code for sending a ringless voicemail with the Drop Cowboy API and for
 receiving the result. The same four recipes are written three times, in Node.js,
 Python and C#. They use plain HTTP, with no SDK, and each one ships with tests
 that run against a mock API, so the tests need no network and no credentials.
+A fifth recipe, `detect-twilio`, uses Detection on a call you place through
+your own Twilio account. See
+[Detect voicemail on a Twilio call](#detect-voicemail-on-a-twilio-call).
 
 New to the API? Start with the [quickstart](quickstart/): one send and one result,
 in a few minutes. Come back here for the full recipes.
@@ -17,7 +20,7 @@ in a few minutes. Come back here for the full recipes.
 | `node/` | Node.js 20.6 or newer, Express 4, built-in test runner. See [`node/README.md`](node/README.md). |
 | `python/` | Python 3.9 or newer, Flask 3, `requests`, pytest. See [`python/README.md`](python/README.md). |
 | `csharp/` | .NET 8, ASP.NET Core minimal API, xUnit. See [`csharp/README.md`](csharp/README.md). |
-| `fixtures/` | Language-neutral JSON used by every test suite: callback and webhook bodies, and the signature test vectors. |
+| `fixtures/` | Language-neutral JSON used by every test suite: callback, webhook, Detection and Twilio bodies, and the signature test vectors. |
 | `CONTRACT.md` | The behavior all three projects share: environment variables, receiver routes, call sequences and test requirements. |
 
 ## Recipes and guides
@@ -31,6 +34,13 @@ summary. The last column links to the reference for the same calls.
 | Send from your own caller ID, on your own carrier | `npm run send:byoc` | `python -m dropcowboy_examples.recipes.send_rvm_byoc` | `dotnet run -- byoc` | [Bring your own carrier](https://www.dropcowboy.com/developers/api/bring-your-own-carrier) |
 | Put several numbers on a phone line and let the platform choose the caller ID | `npm run send:local-presence` | `python -m dropcowboy_examples.recipes.send_rvm_byoc_local_presence` | `dotnet run -- local-presence` | [Bring your own carrier](https://www.dropcowboy.com/developers/api/bring-your-own-carrier) |
 | Send text that is spoken for you | `npm run send:tts` | `python -m dropcowboy_examples.recipes.send_rvm_tts` | `dotnet run -- tts` | [Voices and text to speech](https://www.dropcowboy.com/developers/api/voice) |
+
+One recipe sends no ringless voicemail. It places a call through your own
+Twilio account and uses Detection to play your message on the voicemail beep.
+
+| Recipe | Node.js | Python | C# | Reference |
+|---|---|---|---|---|
+| Call from your Twilio account and play a message on the beep | `npm run detect:twilio` | `python -m dropcowboy_examples.recipes.detect_twilio` | `dotnet run -- detect-twilio` | [Detection](https://www.dropcowboy.com/developers/api/detection) |
 
 Every project also has a receiver that listens for results, and a
 `subscribe` command that creates, lists, updates, rotates and deletes webhooks.
@@ -145,6 +155,97 @@ The `PUT` to the signed upload URL answered `403`. Usually one of two things:
 Or set `DC_AUDIO_FILE` to an `https://` address of the file, and it is imported
 by URL instead. Each project's README shows the three upload calls.
 
+## Detect voicemail on a Twilio call
+
+Send only to people who agreed to hear from you. Test with numbers you own.
+This places a real phone call. Twilio bills the call and Drop Cowboy bills the
+Detection session.
+
+`detect-twilio` shows how to use
+[Detection](https://www.dropcowboy.com/developers/api/detection) on a call you
+place yourself. It calls `DC_TO` from `TWILIO_FROM` through your own Twilio
+account and forks the call audio to Detection with TwiML `<Start><Stream>`. The
+call stays silent while Detection listens. When Detection reports the voicemail
+beep, the recipe redirects the live call with Twilio's REST API to play your
+message. If a live person answers, it plays your live message, or the voicemail
+message when you set none. It sends no ringless voicemail.
+
+### What you need
+
+- **A Twilio account that is not a trial.** A trial account plays a notice and
+  waits for a key press before your TwiML runs, so Detection would hear the
+  notice. The recipe checks the account and stops on a trial.
+- **Your Twilio credentials and caller ID.** `TWILIO_ACCOUNT_SID`,
+  `TWILIO_AUTH_TOKEN`, and `TWILIO_FROM`, which must be a number in that
+  account or a verified caller ID on it.
+- **A public HTTPS tunnel** to the recipe's web server, in `DC_PUBLIC_URL`.
+  This recipe does not run without one: Twilio fetches the call's instructions
+  from it and Detection posts results to it. Detection calls only `https://`
+  addresses on port 443. Before it places the call, the recipe checks that the
+  tunnel reaches it.
+- **A Detection key, or an API key that can make one.** Set `DC_DETECTION_KEY`,
+  or set `DC_KEY` and `DC_SECRET` to a key pair with `balance:read` (to list
+  Detection keys) and `account:write` (to create and delete them). With the
+  key pair, the recipe creates a temporary Detection key named
+  `Twilio detection recipe (temporary)` and deletes it at the end, also after
+  an error or Ctrl+C. Detection needs a verified account with Building Blocks
+  enabled.
+- **Your message.** `DC_VM_AUDIO_URL`, a public `https://` MP3 or WAV, or
+  `DC_VM_TEXT`, which Twilio speaks (1,000 characters or fewer). Optionally
+  `DC_LIVE_AUDIO_URL` or `DC_LIVE_TEXT` for a live person.
+
+`CONTRACT.md` lists the optional settings: the detection strategy and timeout,
+the confidence a live-person verdict needs, how long to wait for a beep, how
+long the phone rings and how long the whole run lasts.
+
+The Detection key goes into the TwiML as the `api_key` stream parameter, so it
+shows in your Twilio Console request logs. Use a dedicated key and delete it
+when you are done. The temporary key does that for you.
+
+### How results arrive
+
+The recipe runs a small web server with four routes:
+
+| Route | Who calls it |
+|---|---|
+| `POST /twilio/voice` | Twilio, for the call's TwiML when the call is answered. Checked with `X-Twilio-Signature`. |
+| `POST /twilio/status` | Twilio, with status callbacks for the call. Checked with `X-Twilio-Signature`. |
+| `POST /webhooks/detection` | Detection, with each result as a signed webhook. |
+| `GET /health` | The recipe itself, to check the tunnel before it places the call. |
+
+Detection webhooks are signed differently from the API webhooks above:
+
+- `X-Signature` is `v1=hmac-sha256,<hex>`: the HMAC-SHA256 of
+  `X-Timestamp + "." + raw body`, keyed with the Detection key, not with a
+  webhook signing secret.
+- `X-Timestamp` is in milliseconds. The receiver rejects one more than 5
+  minutes from now.
+- Detection retries a delivery with the same `delivery_id` (also sent as
+  `X-Delivery-Id`), so the receiver deduplicates on it.
+
+The recipe acts at most once per call. A beep plays the voicemail message. A
+live-person verdict at or above `DC_LIVE_CONFIDENCE` plays the live message. A
+voicemail verdict with no beep in time plays the voicemail message anyway. A
+silence verdict or a timeout hangs up. To play a message it updates the call
+with TwiML that first stops the stream (`<Stop><Stream name="detection"/></Stop>`),
+which ends the Detection session. At the end it prints a summary: the outcome,
+the last verdict, the beep timing, how long Twilio took to accept the update,
+and the final call status.
+
+### Run it
+
+Each language README has the setup and the full list of settings:
+
+| Language | Command | Setup |
+|---|---|---|
+| Node.js | `npm run detect:twilio` | [`node/README.md`](node/README.md) |
+| Python | `python -m dropcowboy_examples.recipes.detect_twilio` | [`python/README.md`](python/README.md) |
+| C# | `dotnet run -- detect-twilio` | [`csharp/README.md`](csharp/README.md) |
+
+The tests use a mock Twilio and a mock API, so they spend nothing. The
+signature vectors are in `fixtures/detection-signature-vectors.json` and
+`fixtures/twilio-signature-vectors.json`.
+
 ## Compliance
 
 Send only to people who agreed to hear from you, and keep a record of that
@@ -169,7 +270,8 @@ You can build and test without a tunnel:
   before you send anything.
 - **A recipe still sends without `DC_PUBLIC_URL`.** It adds no `callback_url`,
   prints a notice that the result will not come back to this program, and you
-  can read the result in your dashboard.
+  can read the result in your dashboard. The exception is `detect-twilio`,
+  which needs a tunnel because Twilio and Detection both call it.
 - **To see results arrive on your computer,** start any HTTPS tunnel that
   forwards to the receiver's port, and set `DC_PUBLIC_URL` to the address it
   gives you, with no trailing path. The receiver adds `/callbacks/dropcowboy`

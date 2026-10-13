@@ -1,0 +1,35 @@
+{
+  "description": "X-Twilio-Signature vectors for the detect-twilio recipe. Regenerate with: node fixtures/generate-vectors.mjs",
+  "algorithm": "base64 of HMAC-SHA1 keyed with the Twilio auth token over the full request URL followed by each POST parameter name and value, sorted by name",
+  "auth_token": "test-twilio-auth-token-not-real-0042",
+  "other_auth_token": "test-twilio-auth-token-not-real-0043",
+  "url": "https://tunnel.example.org/twilio/status",
+  "params": {
+    "AccountSid": "AC00000000000000000000000000000000",
+    "ApiVersion": "2010-04-01",
+    "CallSid": "CA00000000000000000000000000000001",
+    "CallStatus": "completed",
+    "CallDuration": "21",
+    "CallbackSource": "call-progress-events",
+    "Direction": "outbound-api",
+    "From": "+13125550147",
+    "SequenceNumber": "3",
+    "Timestamp": "Fri, 20 Mar 2026 15:04:09 +0000",
+    "To": "+13125550142"
+  },
+  "signature": "WwZbKJkJdSuZnXL84FI0RwLRJqY=",
+  "tampered_params": {
+    "AccountSid": "AC00000000000000000000000000000000",
+    "ApiVersion": "2010-04-01",
+    "CallSid": "CA00000000000000000000000000000001",
+    "CallStatus": "busy",
+    "CallDuration": "21",
+    "CallbackSource": "call-progress-events",
+    "Direction": "outbound-api",
+    "From": "+13125550147",
+    "SequenceNumber": "3",
+    "Timestamp": "Fri, 20 Mar 2026 15:04:09 +0000",
+    "To": "+13125550142"
+  },
+  "signature_from_other_token": "zroBrblo/2ONHYFbjyQXMHZvxro="
+}

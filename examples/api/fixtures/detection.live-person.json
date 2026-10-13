@@ -1,0 +1,21 @@
+{
+  "delivery_id": "8d96255d-3858-4911-bf31-5bf1f16ca012",
+  "event": "detection",
+  "emitted_at": "2026-03-20T15:04:01.840Z",
+  "session_id": "63c83cc6-91ec-4127-88d0-ea109c4c2738",
+  "call_id": "fa6de30e-9e3a-40c4-97fc-1fdad5f21338",
+  "app_id": "AC00000000000000000000000000000000",
+  "source": "twilio",
+  "twilio_call_sid": "CA00000000000000000000000000000001",
+  "twilio_account_sid": "AC00000000000000000000000000000000",
+  "twilio_stream_sid": "MZ00000000000000000000000000000001",
+  "data": {
+    "timestamp_ms": 1840,
+    "type": "speech.human.unknown",
+    "confidence": 0.6,
+    "beep_detected": false,
+    "detection_time_ms": 1840,
+    "is_final": false,
+    "is_refinement": false
+  }
+}

@@ -43,6 +43,7 @@ Each language project has the same parts:
 | `subscribe` | Creates one webhook for `contact.rvm.status` (and optionally `contact.rvm.receipt`) at `${DC_PUBLIC_URL}/webhooks/dropcowboy`. Also lists, updates, rotates and deletes webhooks |
 | `upload-media` | Uploads or imports `DC_AUDIO_FILE` and prints its `media_id` |
 | `check-receiver` | Posts a sample callback and a signed sample webhook to the reader's own endpoints and classifies each answer. Calls no API |
+| `detect-twilio` | Places a call through the reader's own Twilio account, forks its audio to Detection, listens for Detection webhooks and plays a message on the beep. See [detect-twilio](#detect-twilio) |
 | `tests` | Unit and mock-server tests. No network, no real credentials |
 
 ## Environment variables
@@ -359,6 +360,301 @@ The loss clause for `route`, `auth` and `rejected`: a webhook answered with 408,
 not retried, so the event is lost"; a callback "is not retried, so that result is lost."
 It ends with "All checks passed." or "Some checks failed." plus the API Logs line, and
 exits 1 when any check fails or the arguments are wrong.
+
+### detect-twilio
+
+The point: show a reader with their own Twilio account how to use Detection on an
+outbound call. The recipe dials `DC_TO` from `TWILIO_FROM`, forks the call audio to
+Detection with `<Start><Stream>`, receives Detection's signed webhooks, and redirects
+the live call with Twilio's REST API when the beep arrives (or a live person
+answers). Twilio is called over plain HTTPS like the Drop Cowboy API: no Twilio SDK,
+no Drop Cowboy SDK.
+
+It runs its own receiver (four routes below) and never sends ringless voicemail, so
+it does not use the `/callbacks/dropcowboy` or `/webhooks/dropcowboy` routes.
+
+Every file header and the README also say: "This places a real phone call. Twilio
+bills the call and Drop Cowboy bills the Detection session." Print that line right
+after the consent line.
+
+#### Settings
+
+| Variable | Required | Meaning |
+|---|---|---|
+| `TWILIO_ACCOUNT_SID` | Yes | Starts with `AC`, 34 characters. Print only its last 4 characters |
+| `TWILIO_AUTH_TOKEN` | Yes | Basic auth password for Twilio and the key for `X-Twilio-Signature`. Never printed, not even the last 4 |
+| `TWILIO_FROM` | Yes | Caller ID in E.164. Must be a number in the Twilio account or a verified caller ID on it |
+| `TWILIO_BASE_URL` | No | Default `https://api.twilio.com`. Tests point it at a mock server |
+| `DC_TO` | Yes | Number to call in E.164. Must be someone who agreed to hear from you |
+| `DC_PUBLIC_URL` | Yes | Public HTTPS base URL that reaches the receiver (a tunnel). Twilio fetches TwiML from it and Detection posts webhooks to it, and Detection accepts only `https://` on port 443. Reject `http://`, an explicit port other than `443`, a query string or fragment, `localhost`, `.local` and private or link-local addresses. Strip a trailing `/` |
+| `DC_DETECTION_KEY` | One of | Detection API key. Sent to Detection as the `api_key` stream parameter, and the key the webhook signature is checked with |
+| `DC_KEY`, `DC_SECRET` | One of | Used only when `DC_DETECTION_KEY` is unset: the recipe creates a temporary Detection key (see the call sequence) and deletes it at the end. Needs `balance:read` (to list keys) and `account:write` (to create and delete them) |
+| `DC_BASE_URL` | No | As for the other recipes |
+| `DC_DETECTION_URL` | No | Default `wss://detect.dropcowboy.com/carrier/ws/twilio`. Must start with `wss://` |
+| `DC_VM_AUDIO_URL` | One of | Public `https://` MP3 or WAV that Twilio plays on the beep (`<Play>`) |
+| `DC_VM_TEXT` | One of | Text Twilio speaks on the beep (`<Say>`) when `DC_VM_AUDIO_URL` is unset. 1,000 characters or fewer |
+| `DC_LIVE_AUDIO_URL`, `DC_LIVE_TEXT` | No | Message for a live person, same rules. When both are unset the live person hears the voicemail message |
+| `DC_DETECTION_STRATEGY` | No | `standard` (default), `beep_only` or `live_check` |
+| `DC_DETECTION_TIMEOUT_SEC` | No | Integer 5 to 120, default `45` |
+| `DC_LIVE_CONFIDENCE` | No | Number from 0 to 1, default `0.6`. A live-person verdict (`speech.human.*`) below it is logged and not acted on. Keep it at `0.6` or lower: a short "hello" followed by a pause arrives as an early live-person verdict at `0.6` |
+| `DC_BEEP_WAIT_SECONDS` | No | Integer 1 to 60, default `20`. After a `speech.voicemail.greeting` verdict, how long to wait for the beep before playing anyway |
+| `DC_RING_SECONDS` | No | Integer 5 to 60, default `30`. Twilio's `Timeout` for the call |
+| `DC_WAIT_SECONDS` | No | Integer 60 to 600, default `180`. The whole run, from creating the call to the end. `0` is refused: this recipe has to listen |
+| `PORT` | No | Receiver port, default `3000` |
+
+Exactly one of `DC_VM_AUDIO_URL` and `DC_VM_TEXT` must be usable (audio wins when both
+are set). `DC_DETECTION_KEY` wins over `DC_KEY`/`DC_SECRET`. With neither, stop
+before any request with a message naming both options.
+
+Validate everything before the first request, in this order, and print every
+problem found, not just the first: required settings, E.164 shape of `DC_TO` and
+`TWILIO_FROM` (`+` then 8 to 15 digits), `TWILIO_ACCOUNT_SID` shape (`AC` plus 32
+hex), `DC_PUBLIC_URL`, the audio URLs (`https://`, path ends in `.mp3` or `.wav`,
+case-insensitive), the numeric ranges, the strategy (exact, lowercase). The
+sample-value check over every `DC_` setting and `TWILIO_FROM`, and the refusal of a
+`TWILIO_ACCOUNT_SID` made only of zeros after `AC`
+(`TWILIO_ACCOUNT_SID=<value>: this is the placeholder from our fixtures; use your own.`),
+run in the same pass, and their messages print after the validation problems in one
+list. Any failure exits 1 with no request made. Tests therefore configure
+`AC00000000000000000000000000000001` as the Account SID; the fixtures' all-zero SIDs
+appear only inside the fixture bodies.
+
+#### Receiver routes
+
+Answer within 5 seconds. The routes verify, record and answer. They never call
+Twilio or Drop Cowboy; the recipe acts on what they recorded.
+
+`GET /health` -> `200 {"ok": true}`.
+
+`POST /twilio/voice` (Twilio asks for the call's TwiML when it is answered):
+
+- Form-encoded body. Verify `X-Twilio-Signature` (see below) against
+  `DC_PUBLIC_URL + "/twilio/voice"`, never the `Host` the request arrived with,
+  because a tunnel rewrites it. Missing or wrong signature: `403`, empty body.
+- `CallSid` not the call this run created: `403`.
+- Otherwise `200`, `Content-Type: text/xml`, this TwiML (attribute values XML-escaped:
+  `&`, `<`, `>`, `"`, `'`):
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Start>
+    <Stream name="detection" url="{DC_DETECTION_URL}" track="inbound_track">
+      <Parameter name="api_key" value="{detection key}"/>
+      <Parameter name="webhook_url" value="{DC_PUBLIC_URL}/webhooks/detection"/>
+      <Parameter name="webhook_events" value="detection,beep,screening,timeout,error,close"/>
+      <Parameter name="strategy" value="{DC_DETECTION_STRATEGY}"/>
+      <Parameter name="call_id" value="{run call_id}"/>
+      <Parameter name="detection_timeout_sec" value="{DC_DETECTION_TIMEOUT_SEC}"/>
+    </Stream>
+  </Start>
+  <Pause length="{DC_DETECTION_TIMEOUT_SEC + DC_BEEP_WAIT_SECONDS + 10}"/>
+  <Hangup/>
+</Response>
+```
+
+  `<Start>` forks the audio and lets the TwiML go on, so the call stays silent in
+  `<Pause>` while Detection listens. The `<Hangup/>` ends a call nobody acted on.
+  The README warns that the Detection key is in this TwiML, so it shows in the Twilio
+  Console request logs: use a dedicated key and delete it when done (the temporary-key
+  path does that).
+
+`POST /webhooks/detection` (Detection deliveries, signed):
+
+- Read the RAW bytes, as for `/webhooks/dropcowboy`.
+- Headers: `X-Signature: v1=hmac-sha256,<hex>`, `X-Timestamp` (milliseconds),
+  `X-Delivery-Id`, `X-Event`, `X-Source`.
+- Verify: `HMAC-SHA256(detection key, X-Timestamp + "." + raw_body)` hex. Split the
+  header on `,`, require the first item to be exactly `v1=hmac-sha256`, compare each
+  later item in constant time. Reject a timestamp more than 300,000 ms from now.
+- Status codes: `401` with `{"error": "<code>"}` for `missing_signature`,
+  `stale_timestamp`, `invalid_signature` (same rules as the other webhook route:
+  non-numeric timestamp is `stale_timestamp`, a header without the `v1=hmac-sha256`
+  scheme is `invalid_signature`), `400` body is not a JSON object,
+  `200 {"received": true}`, and `200 {"received": true, "duplicate": true}` for a
+  repeated `delivery_id` (fall back to `X-Delivery-Id`). Detection retries a delivery
+  with the same id, so dedupe is required.
+- Record every accepted event. A `call_id` other than this run's is recorded as
+  ignored and logged, never acted on.
+
+`POST /twilio/status` (Twilio status callback):
+
+- Verify `X-Twilio-Signature` against `DC_PUBLIC_URL + "/twilio/status"`, `403` when
+  missing or wrong. Record `CallStatus` (and `CallDuration` when present) for this
+  run's `CallSid`. Answer `200`, empty body.
+
+`X-Twilio-Signature` is base64 of HMAC-SHA1 keyed with `TWILIO_AUTH_TOKEN` over the URL
+followed by every POST parameter name and its value, sorted by name (byte order),
+with nothing between them. Compare in constant time. A repeated parameter name
+contributes each value, in the order received.
+
+#### Call sequence
+
+`call_id` is a fresh uuid v4 for the run. Print it.
+
+1. Print the consent line and the billing line.
+2. Validate settings as above.
+3. Detection key. With `DC_DETECTION_KEY`, use it and print its last 4 characters.
+   Otherwise:
+   a. `GET /register/public/detection-keys`; for every item whose `name` is exactly
+      `Twilio detection recipe (temporary)`, `DELETE /register/public/detection-keys/{key_id}`
+      (leftovers from a run that was killed).
+   b. `POST /register/public/detection-keys`
+      `{ "name": "Twilio detection recipe (temporary)", "expires_in_seconds": 3600 }`.
+      `201` `data` has `key_id` and `api_key`. Print the `key_id` and the last 4 of the key.
+      A `403` prints the API's `detail` and `details.code`, then one `What to do:` line
+      for these codes, and exits 1:
+
+      | Code | Hint |
+      |---|---|
+      | `byoc-required` | Detection keys need Building Blocks on your account. Enable Building Blocks, then run this again. |
+      | `team-not-verified` | Finish verifying your account in the dashboard, then run this again. |
+      | `trial_feature_blocked` | Detection keys are not available on a trial account. Choose a plan, then run this again. |
+4. Twilio preflight (Basic auth `TWILIO_ACCOUNT_SID:TWILIO_AUTH_TOKEN`, `Accept: application/json`):
+   a. `GET /2010-04-01/Accounts/{sid}.json`. When `type` is `Trial`, stop: "Twilio trial
+      accounts play a notice and wait for a key press before your TwiML runs, so
+      detection would hear the notice. Upgrade the Twilio account to run this recipe."
+      When `status` is not `active`, stop and print it.
+   b. `GET /2010-04-01/Accounts/{sid}/IncomingPhoneNumbers.json?PhoneNumber={TWILIO_FROM}`
+      (URL-encode the `+`). A non-empty `incoming_phone_numbers` passes. Otherwise
+      `GET /2010-04-01/Accounts/{sid}/OutgoingCallerIds.json?PhoneNumber={TWILIO_FROM}`,
+      non-empty `outgoing_caller_ids` passes. Otherwise stop: "TWILIO_FROM is not a
+      number in this Twilio account or a verified caller ID on it."
+5. Start the receiver on `PORT`. `GET {DC_PUBLIC_URL}/health`, 10 second timeout, must be
+   `200` with `{"ok": true}`, else stop: the tunnel does not reach this receiver.
+6. `POST /2010-04-01/Accounts/{sid}/Calls.json`, form-encoded:
+   `To`, `From`, `Url={DC_PUBLIC_URL}/twilio/voice`, `Method=POST`,
+   `StatusCallback={DC_PUBLIC_URL}/twilio/status`, `StatusCallbackMethod=POST`,
+   `StatusCallbackEvent` four times (`initiated`, `ringing`, `answered`, `completed`),
+   `Timeout={DC_RING_SECONDS}`. Nothing else: no `MachineDetection`, because Detection
+   does that job. Never retried. `201` JSON has `sid`; print it.
+7. Act on what the receiver records, at most one action per call, decided in this order
+   as events arrive:
+   Verdict `type` values are the ones Detection sends on the wire (see
+   `v2/docs/api/detection.md`): `speech.human.unknown`, `speech.voicemail.greeting`,
+   `speech.voicemail.full`, `speech.voicemail.not_setup`, `speech.silence`,
+   `speech.ivr`, `speech.screening`, `speech.carrier.intercept`, `speech.unknown`.
+   Match live person on the `speech.human.` prefix, so a future subtype still counts.
+   Match the voicemail and silence values exactly.
+   - `beep` -> play the voicemail message. Outcome `voicemail_on_beep`. A beep counts
+     whether or not a voicemail verdict came first.
+   - `detection` whose `type` starts with `speech.human.` and
+     `confidence >= DC_LIVE_CONFIDENCE` -> play the live message. Outcome `live_person`.
+   - `detection` with `type: "speech.voicemail.greeting"` -> print it and start the beep
+     timer (`DC_BEEP_WAIT_SECONDS`), once. A later verdict does not restart it. If it
+     runs out with no beep, play the voicemail message anyway. Outcome
+     `voicemail_no_beep`.
+   - `detection` with `type: "speech.voicemail.full"` or `"speech.voicemail.not_setup"`
+     -> hang up: the mailbox cannot take a message. Outcome `voicemail_unavailable`
+     (print the type).
+   - `detection` with `type: "speech.silence"`, `timeout`, or `error` without
+     `recoverable: true` (false or missing) -> hang up. Outcome `no_answer_detected`
+     (`speech.silence`, `timeout`) or `detection_error` (print `code` and `error`).
+   - `screening` -> print `screening_type`, `suggested_action` and `suggested_dtmf`. No
+     action.
+   - `error` with `recoverable: true`, and any other `detection` (`speech.ivr`,
+     `speech.screening`, `speech.carrier.intercept`, `speech.unknown`, a live-person
+     verdict below the threshold, or a value not listed here) -> print, no action.
+   - `close` before any action -> print `reason`; keep waiting for Twilio's status.
+   - Twilio status `busy`, `no-answer`, `failed` or `canceled` before any action ->
+     outcome `not_answered` with that status, no Twilio request.
+   - Twilio status `completed` before any action -> outcome `ended_before_action`.
+   To play: `POST /2010-04-01/Accounts/{sid}/Calls/{CallSid}.json` with one form field
+   `Twiml` set to
+   `<Response><Stop><Stream name="detection"/></Stop><Play>{url}</Play><Hangup/></Response>`
+   (or `<Say>{text}</Say>` for text, XML-escaped). Stopping the stream ends the
+   Detection session, which then sends `close` with reason `normal`. To hang up: the same
+   route with `Status=completed`. Print how many milliseconds passed between the
+   receiver recording the beep and Twilio answering the update.
+   A `404`, or Twilio error `21220`, on the update means the call already ended: print
+   it and go on to the summary, not an error.
+8. Wait for a terminal Twilio status (`completed`, `busy`, `no-answer`, `failed`,
+   `canceled`) for the rest of `DC_WAIT_SECONDS`.
+9. If `DC_WAIT_SECONDS` runs out with no action, hang up (outcome `no_result`) and print: "No Detection
+   result arrived. Check that the Detection key is active and the balance covers
+   Detection, and look for stream errors in the Twilio Console debugger." When no
+   Detection webhook arrived at all, add that a refused key closes the stream before
+   any webhook is sent.
+10. Summary, one line each: `outcome`, the last verdict (`type`, `confidence`), beep
+    `timestamp_ms` and `duration_ms` when one arrived, the update latency, final
+    `CallStatus` and `CallDuration`, the `CallSid`, the `call_id`, and the number of
+    Detection webhooks received, duplicates and ignored. `received` counts every
+    signed, non-duplicate delivery, including the ignored ones; `ignored` is the part
+    of `received` for another `call_id`.
+11. `finally`, also on Ctrl+C and on any error after step 6: if the call has no terminal
+    status, hang it up (`Status=completed`; a `404` or `21220` is fine). Then delete the
+    temporary key if this run created one (print `Temporary Detection key deleted.`), then
+    close the receiver. Each step runs even if an earlier one fails, and its failure is
+    printed. Exit 0 for any outcome in the summary, 1 for a settings, preflight or
+    request error or a failed cleanup step, and 130 on Ctrl+C (after the cleanup), as
+    in the other commands.
+
+Signed `/twilio/status` callbacks for another `CallSid` are answered `200` and not
+acted on. A status that arrives before Twilio's create-call response is kept and
+counted once the `CallSid` is known, so a fast `completed` is not lost.
+
+Twilio errors: non-2xx JSON has `code`, `message`, `more_info`, `status`. Print the HTTP
+status, `code`, `message` and `more_info`, then one `What to do:` line for these codes:
+
+| Code | Hint (meaning) |
+|---|---|
+| `21210`, `21212` | TWILIO_FROM must be a number in this Twilio account or a verified caller ID on it. |
+| `21215` | Twilio's Voice geographic permissions block calls to this country. Enable it in the Twilio Console. |
+| `21219` | Trial accounts can call only verified numbers. Upgrade the Twilio account to run this recipe. |
+| `20003` | Twilio rejected TWILIO_ACCOUNT_SID or TWILIO_AUTH_TOKEN. |
+
+Twilio client: form-encoded bodies, 30 second timeout, GETs retry `429` and `5xx` like
+`DcClient`, POSTs never retry. It never prints request headers or the auth token.
+
+#### Signature vectors
+
+`fixtures/detection-signature-vectors.json` and `fixtures/twilio-signature-vectors.json`
+(regenerate with `node fixtures/generate-vectors.mjs`). Assert:
+
+Detection: `signature` verifies for `raw_body` + `timestamp_ms` + `detection_key` at
+`now_ms_valid`; `now_ms_stale` -> `stale_timestamp`; `tampered_raw_body` and
+`signature_from_other_key` -> `invalid_signature`; missing header or timestamp ->
+`missing_signature`; the digest without the `v1=hmac-sha256,` scheme ->
+`invalid_signature`; a non-numeric timestamp -> `stale_timestamp`.
+
+Twilio: `signature` verifies for `url` + `params` + `auth_token`; `tampered_params`, a
+different URL, and `signature_from_other_token` fail; a missing header fails.
+
+#### Tests
+
+Mock Twilio (the `/2010-04-01/...` routes above) and mock Drop Cowboy in-test, ephemeral
+ports. Drive the receiver over real HTTP with signed Twilio and Detection requests
+built from the fixtures (with this run's `call_id` and `CallSid` swapped in). The
+health check goes to the receiver directly in tests; everything else uses the
+configured `DC_PUBLIC_URL` for signing exactly as in production. Cover:
+
+- Settings: each required setting missing, every `DC_PUBLIC_URL` rejection, bad E.164,
+  bad SID, zero SID, `DC_WAIT_SECONDS=0`, a sample value, and that no request is made.
+- Key: with `DC_DETECTION_KEY` no Drop Cowboy request is made; without it, the order is
+  list, delete leftovers, create, and the key is deleted in `finally` on success, on a
+  Twilio error and on a thrown error; a `403 byoc-required` prints its hint.
+- Preflight: trial stops; inactive stops; incoming number passes without the caller ID
+  call; verified caller ID passes; neither stops; no call is created after a stop.
+- The exact `Calls.json` form body, including four `StatusCallbackEvent` values and no
+  `MachineDetection`.
+- `/twilio/voice`: the exact TwiML for audio and for text, XML escaping, `403` on a bad
+  signature and on another `CallSid`.
+- `/webhooks/detection`: every status code above and dedupe on `delivery_id`.
+- Decisions: beep plays the voicemail message (exact `Twiml`); `speech.human.unknown`
+  at and above the threshold plays the live message, below it does nothing, and the
+  default threshold acts on a `0.6` verdict; another `speech.human.` subtype also plays
+  the live message; the bare word `live_person` is not acted on; the live message
+  falls back to the voicemail message; `speech.voicemail.greeting` then no beep plays
+  after the timer; `speech.voicemail.greeting` then beep plays on the beep;
+  `speech.voicemail.full` and `speech.voicemail.not_setup` hang up with
+  `voicemail_unavailable`; `speech.ivr` does nothing; `speech.silence` and timeout hang up; a
+  non-recoverable error hangs up; a recoverable one does not; only one action per call
+  when events race; another `call_id` is ignored; `busy` before answer ends with no
+  update.
+- `finally` hangs up a call that is still up and skips the hang-up after a terminal
+  status; a `404` on the hang-up is not an error.
+- Neither `TWILIO_AUTH_TOKEN`, `DC_SECRET` nor the full Detection key appears in
+  captured stdout or stderr, and the Account SID appears only as its last 4.
 
 ## Test requirements (all languages)
 

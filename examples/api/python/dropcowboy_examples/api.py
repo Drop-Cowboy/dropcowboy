@@ -189,6 +189,24 @@ def webhook_signing_secrets(client: DcClient) -> List[str]:
     return [entry["signing_secret"] for entry in _list(body) if entry.get("signing_secret")]
 
 
+# Detection keys --------------------------------------------------------------
+
+def list_detection_keys(client: DcClient) -> List[Dict[str, Any]]:
+    """Every Detection key, newest first. The key itself is never returned, only `key_hint`."""
+    return _list(client.get("/register/public/detection-keys"))
+
+
+def create_detection_key(client: DcClient, name: str, expires_in_seconds: int) -> Dict[str, Any]:
+    """Create a Detection key. `api_key` is in this answer only; it is also the webhook signing key."""
+    body = client.post("/register/public/detection-keys", {"name": name, "expires_in_seconds": expires_in_seconds})
+    return data_of(body) or {}
+
+
+def delete_detection_key(client: DcClient, key_id: str) -> None:
+    """Revoke a Detection key by its `key_id` (not the key). Sessions already open run to completion."""
+    client.delete("/register/public/detection-keys/" + key_id)
+
+
 def _list(body: Any) -> List[Dict[str, Any]]:
     data = data_of(body)
     return data if isinstance(data, list) else []

@@ -25,6 +25,8 @@ public static class Cli
           upload-media     Upload DC_AUDIO_FILE (or import it from an https:// address) and print its media_id
           check-receiver   Post a sample callback and a signed sample webhook to your endpoints:
                            check-receiver <callback-url> [webhook-url]
+          detect-twilio    Call DC_TO through your own Twilio account, listen with Detection,
+                           and play a message on the beep. Places a real, billed call
 
         Settings come from environment variables. See README.md.
         """;
@@ -36,7 +38,8 @@ public static class Cli
         TextWriter error,
         CancellationToken ct,
         TimeSpan? pollInterval = null,
-        TimeSpan? pollTimeout = null)
+        TimeSpan? pollTimeout = null,
+        DetectTwilioOptions? detectOptions = null)
     {
         var command = args.Length > 0 ? args[0].ToLowerInvariant() : "help";
         if (command is "help" or "--help" or "-h")
@@ -55,6 +58,14 @@ public static class Cli
         try
         {
             output.WriteLine(RecipeSteps.Reminder);
+
+            // detect-twilio checks its own settings first, then the sample values, and
+            // needs no DC_KEY when DC_DETECTION_KEY is set.
+            if (command == "detect-twilio")
+            {
+                return await DetectTwilio.RunAsync(config, output, error, ct, detectOptions);
+            }
+
             SampleValues.Refuse(config);
             return await DispatchAsync(command, args, config, output, ct, pollInterval, pollTimeout);
         }
@@ -64,6 +75,15 @@ public static class Cli
             return 1;
         }
         catch (DcError ex)
+        {
+            foreach (var line in ex.Report())
+            {
+                error.WriteLine(line);
+            }
+
+            return 1;
+        }
+        catch (TwilioError ex)
         {
             foreach (var line in ex.Report())
             {
@@ -82,7 +102,7 @@ public static class Cli
     private static bool IsCommand(string command)
     {
         return command is "receiver" or "retail" or "byoc" or "local-presence" or "tts" or "subscribe"
-            or "upload-media" or "check-receiver"
+            or "upload-media" or "check-receiver" or "detect-twilio"
             or "send-rvm-retail" or "send-rvm-byoc" or "send-rvm-byoc-local-presence" or "send-rvm-tts";
     }
 

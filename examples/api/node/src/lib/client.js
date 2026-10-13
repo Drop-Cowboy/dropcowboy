@@ -237,4 +237,4 @@ function defaultSleep(ms) {
     });
 }
 
-export { DcClient, DcError, clientFromEnv, newIdempotencyKey };
+export { DcClient, DcError, backoffMs, clientFromEnv, defaultSleep, describeNetworkError, newIdempotencyKey };

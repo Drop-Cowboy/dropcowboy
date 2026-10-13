@@ -93,6 +93,11 @@ disagree, trust this file and the [developer hub](https://www.dropcowboy.com/dev
   `examples/api/fixtures/signature-vectors.json` has known-good signatures to
   test a verifier against.
 - `examples/api/{node,python,csharp}`: the same in three languages, with tests.
+  They also hold `detect-twilio`, which places a call through the user's own
+  Twilio account, forks the audio to Detection and plays a message on the
+  voicemail beep. Detection webhooks are signed with the Detection key as
+  `v1=hmac-sha256,<hex>` with a millisecond `X-Timestamp`, not like the
+  webhooks above. See `examples/api/README.md`.
 - The Starter CRM, a full app that uses Building Blocks and the API, is its
   own template repository: https://github.com/Drop-Cowboy/starter-crm
 - `skills/<block>/SKILL.md`: how to add one Building Block.
