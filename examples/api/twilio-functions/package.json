@@ -1,0 +1,15 @@
+{
+  "name": "dropcowboy-detection-twilio-functions",
+  "version": "1.0.0",
+  "description": "Twilio Functions that put Drop Cowboy Detection on a call and act on its webhooks. Deploy with the Twilio CLI.",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "twilio": "6.2.0"
+  }
+}

@@ -145,19 +145,12 @@ internal sealed class DetectionRoutes(DetectionReceiverOptions options)
             return Reply(400, new JsonObject { ["error"] = "body_must_be_a_json_object" });
         }
 
-        var deliveryId = Json.String(body, "delivery_id") ?? Header(request, "X-Delivery-Id");
-        if (deliveryId is not null && !options.Events.FirstDelivery(deliveryId))
-        {
-            options.Log.WriteLine($"[detection webhook] duplicate delivery_id={Redact.Safe(deliveryId, 60)}, already handled");
-            return Reply(200, new JsonObject { ["received"] = true, ["duplicate"] = true });
-        }
-
         var name = Json.String(body, "event") ?? "unknown";
         var callId = Json.String(body, "call_id");
         var ignored = callId != options.Events.CallId;
         options.Log.WriteLine($"[detection webhook] event={Redact.Safe(name, 40)}"
             + (ignored ? $" call_id={Redact.Safe(callId ?? "(none)", 60)} is not this run's call: ignored" : string.Empty));
-        options.Events.Add(new DetectionEvent(name, deliveryId, callId, ignored, body, Stopwatch.GetTimestamp()));
+        options.Events.Add(new DetectionEvent(name, callId, ignored, body, Stopwatch.GetTimestamp()));
         return Reply(200, new JsonObject { ["received"] = true });
     }
 

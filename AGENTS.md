@@ -98,6 +98,11 @@ disagree, trust this file and the [developer hub](https://www.dropcowboy.com/dev
   voicemail beep. Detection webhooks are signed with the Detection key as
   `v1=hmac-sha256,<hex>` with a millisecond `X-Timestamp`, not like the
   webhooks above. See `examples/api/README.md`.
+- `examples/api/twilio-functions`: two Twilio Functions the user deploys with the
+  Twilio CLI, to show receiving a Detection event and responding to it. The
+  webhook Function can't read the raw body, so it authenticates with a `?token=`
+  in the webhook URL instead of `X-Signature`. The user's logic goes in `onEvent`
+  at the top of `functions/detection-webhook.js`.
 - The Starter CRM, a full app that uses Building Blocks and the API, is its
   own template repository: https://github.com/Drop-Cowboy/starter-crm
 - `skills/<block>/SKILL.md`: how to add one Building Block.

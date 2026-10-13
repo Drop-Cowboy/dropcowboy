@@ -205,7 +205,7 @@ It acts at most once per call. In order:
 2. Uses `DC_DETECTION_KEY`, or creates a temporary Detection key with `DC_KEY` and `DC_SECRET` (the API key needs `balance:read` to list Detection keys and `account:write` to create and delete them). A temporary key expires in one hour, and the recipe deletes it at the end. It also deletes one left over by an earlier run.
 3. Checks the Twilio account is active and not a trial, and that `TWILIO_FROM` is a number in it or a verified caller ID on it.
 4. Starts the receiver and checks that `DC_PUBLIC_URL/health` reaches it through your tunnel.
-5. Creates the call. Waits for Detection, then plays the message or hangs up.
+5. Creates the call. Waits for Detection, then plays the message.
 6. Prints a summary. Then it hangs up a call that is still up, deletes the temporary key and closes the receiver. It does this after an error and after Ctrl+C too. A second Ctrl+C quits at once, without cleaning up.
 
 Every outcome in the summary exits with code 0. A settings, preflight or request error, or a cleanup step that failed, exits with code 1. Ctrl+C (or SIGTERM) exits with code 130, after the cleanup.
@@ -226,10 +226,6 @@ Every outcome in the summary exits with code 0. A settings, preflight or request
 | `DC_VM_AUDIO_URL` | One of | An `https://` MP3 or WAV that plays on the beep. |
 | `DC_VM_TEXT` | One of | Text spoken on the beep when `DC_VM_AUDIO_URL` is unset. 1,000 characters or fewer. |
 | `DC_LIVE_AUDIO_URL`, `DC_LIVE_TEXT` | No | The message for a live person, same rules. Unset, a live person hears the voicemail message. |
-| `DC_DETECTION_STRATEGY` | No | `standard` (default), `beep_only` or `live_check`. |
-| `DC_DETECTION_TIMEOUT_SEC` | No | 5 to 120, default 45. How long Detection listens for a verdict. |
-| `DC_LIVE_CONFIDENCE` | No | 0 to 1, default 0.6. A live person verdict (`speech.human.*`) below it is printed and not acted on. Keep it at 0.6 or lower: a short "hello" and a pause arrives as an early live person verdict at 0.6. |
-| `DC_BEEP_WAIT_SECONDS` | No | 1 to 60, default 20. After a `speech.voicemail.greeting` verdict, how long to wait for the beep before playing anyway. |
 | `DC_RING_SECONDS` | No | 5 to 60, default 30. How long the phone rings. |
 | `DC_WAIT_SECONDS` | No | 60 to 600, default 180. The whole run. `0` is refused, because this recipe has to listen. |
 | `DC_DETECTION_URL` | No | Default `wss://detect.dropcowboy.com/carrier/ws/twilio`. |
@@ -257,18 +253,16 @@ The routes check the signature, record the event and answer at once. They never 
 
 **The Detection key appears in the TwiML.** Twilio passes it to Detection as a stream parameter, so it shows in the Twilio Console request logs for the call. Anyone who can read those logs can read the key. Leave `DC_DETECTION_KEY` unset to have the recipe use a temporary key that lasts at most an hour, or delete the key when you are done testing.
 
-### Detection verdicts
+### What it acts on
 
-A `detection` webhook carries a verdict in `data.type`, with a `data.confidence` from 0 to 1. The recipe acts on these values:
+The recipe does two things and nothing else:
 
-| `data.type` | What the recipe does |
+| Detection sends | What the recipe does |
 |---|---|
-| Starts with `speech.human.`, such as `speech.human.unknown` | A live person. At or above `DC_LIVE_CONFIDENCE`, plays the live message. Below it, prints the verdict and waits. |
-| `speech.voicemail.greeting` | A voicemail greeting. Waits up to `DC_BEEP_WAIT_SECONDS` for the beep, then plays the voicemail message anyway. |
-| `speech.voicemail.full`, `speech.voicemail.not_setup` | The mailbox cannot take a message. Hangs up. |
-| `speech.silence` | Nobody spoke. Hangs up. |
+| A `beep` webhook | Plays the voicemail message. |
+| A `detection` webhook whose `data.type` starts with `speech.human.` | Plays the live message. |
 
-Any other value, such as `speech.ivr`, `speech.screening`, `speech.carrier.intercept` or `speech.unknown`, is printed and not acted on. The `beep` webhook plays the voicemail message whether or not a verdict came first.
+Every other event is printed and not acted on. It acts once per call.
 
 ### What you should see
 
@@ -287,11 +281,10 @@ Twilio call status: ringing
 Twilio asked for the TwiML: the call was answered and its audio now goes to Detection.
 Twilio call status: in-progress
 Detection verdict: type=speech.voicemail.greeting confidence=0.91
-Voicemail detected. Waiting up to 20 seconds for the beep.
 Detection beep: timestamp_ms=6420 duration_ms=380
 Playing the voicemail message (outcome voicemail_on_beep).
 Twilio accepted the update 212 ms after the receiver recorded the beep.
-Detection session closed: reason=normal
+Detection event close (not used by this recipe)
 Twilio call status: completed (CallDuration 21)
 Summary
   outcome:            voicemail_on_beep
@@ -301,7 +294,7 @@ Summary
   CallStatus:         completed (CallDuration 21)
   CallSid:            CA00000000000000000000000000000001
   call_id:            9b2d4f6a-8c1e-4a3b-9d5f-7e1a3c5b7d90
-  Detection webhooks: 3 received, 0 duplicates, 0 ignored
+  Detection webhooks: 3 received, 0 ignored
 ```
 
 The outcome is one of:
@@ -309,11 +302,7 @@ The outcome is one of:
 | Outcome | Meaning |
 |---|---|
 | `voicemail_on_beep` | The beep arrived and the voicemail message played. |
-| `voicemail_no_beep` | A `speech.voicemail.greeting` verdict, but no beep within `DC_BEEP_WAIT_SECONDS`, so the message played anyway. |
-| `live_person` | A `speech.human.*` verdict at or above `DC_LIVE_CONFIDENCE`. The live message played. |
-| `voicemail_unavailable` | A `speech.voicemail.full` or `speech.voicemail.not_setup` verdict: the mailbox cannot take a message. The recipe hung up. |
-| `no_answer_detected` | A `speech.silence` verdict, or Detection reached its timeout. The recipe hung up. |
-| `detection_error` | Detection reported an error it cannot recover from. The recipe hung up. |
+| `live_person` | A `speech.human.*` verdict. The live message played. |
 | `not_answered` | The call ended busy, unanswered, failed or canceled. |
 | `ended_before_action` | The call ended before anything was played. |
 | `no_result` | No Detection result within `DC_WAIT_SECONDS`. The recipe hung up and printed what to check. |

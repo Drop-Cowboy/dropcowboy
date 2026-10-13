@@ -5,8 +5,8 @@
 //   - the signature check for Detection webhooks,
 //   - the TwiML that forks the call audio to Detection, and the TwiML that
 //     plays your message,
-//   - the rules that turn Detection events and Twilio statuses into at most
-//     one action on the call.
+//   - the two things this recipe does: play a message on the beep, or play a
+//     message when a live person speaks. It does nothing else.
 //
 // Detection webhook headers:
 //   X-Signature  v1=hmac-sha256,<hex>  HMAC-SHA256 of <X-Timestamp> + "." + <raw body>,
@@ -22,6 +22,7 @@ const SIGNATURE_SCHEME = 'v1=hmac-sha256';
 const SHA256_HEX = /^[0-9a-f]{64}$/i;
 const STREAM_NAME = 'detection';
 const WEBHOOK_EVENTS = 'detection,beep,screening,timeout,error,close';
+const PAUSE_MARGIN_SECONDS = 10;
 const TERMINAL_STATUSES = ['completed', 'busy', 'no-answer', 'failed', 'canceled'];
 const NOT_ANSWERED_STATUSES = ['busy', 'no-answer', 'failed', 'canceled'];
 
@@ -32,23 +33,15 @@ const ROUTES = {
     detection: '/webhooks/detection'
 };
 
-// Verdict types as Detection sends them. A live person is matched on the
-// prefix, so a new speech.human.* subtype still counts.
+// A live person is matched on the verdict prefix, so a new speech.human.*
+// subtype still counts.
 const VERDICTS = {
-    humanPrefix: 'speech.human.',
-    voicemailGreeting: 'speech.voicemail.greeting',
-    voicemailFull: 'speech.voicemail.full',
-    voicemailNotSetup: 'speech.voicemail.not_setup',
-    silence: 'speech.silence'
+    humanPrefix: 'speech.human.'
 };
 
 const OUTCOMES = {
     voicemailOnBeep: 'voicemail_on_beep',
-    voicemailNoBeep: 'voicemail_no_beep',
     livePerson: 'live_person',
-    voicemailUnavailable: 'voicemail_unavailable',
-    noAnswerDetected: 'no_answer_detected',
-    detectionError: 'detection_error',
     notAnswered: 'not_answered',
     endedBeforeAction: 'ended_before_action',
     noResult: 'no_result'
@@ -105,14 +98,12 @@ function xmlEscape(value) {
 // Detection and lets the TwiML go on, so the call stays silent in <Pause>
 // while Detection listens. <Hangup/> ends a call nobody acted on.
 // It holds your Detection key, so it shows in the Twilio Console request logs.
-function streamTwiml({ detectionUrl, detectionKey, publicUrl, strategy, callId, detectionTimeoutSec, beepWaitSeconds }) {
+function streamTwiml({ detectionUrl, detectionKey, publicUrl, callId, waitSeconds }) {
     const parameters = [
         ['api_key', detectionKey],
         ['webhook_url', publicUrl + ROUTES.detection],
         ['webhook_events', WEBHOOK_EVENTS],
-        ['strategy', strategy],
-        ['call_id', callId],
-        ['detection_timeout_sec', detectionTimeoutSec]
+        ['call_id', callId]
     ];
     const lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
@@ -126,7 +117,7 @@ function streamTwiml({ detectionUrl, detectionKey, publicUrl, strategy, callId, 
     lines.push(
         '    </Stream>',
         '  </Start>',
-        '  <Pause length="' + (detectionTimeoutSec + beepWaitSeconds + 10) + '"/>',
+        '  <Pause length="' + (waitSeconds + PAUSE_MARGIN_SECONDS) + '"/>',
         '  <Hangup/>',
         '</Response>'
     );
@@ -144,19 +135,20 @@ function messageTwiml(message) {
 }
 
 // Turns events into at most one action on the call. Each on* method returns
-// { action, lines, startBeepTimer } where action is null, { kind: 'play',
-// message: 'voicemail' | 'live' } or { kind: 'hangup' }, and lines are what to
-// print. The recipe performs the action; this class never calls anything.
+// { action, lines } where action is null or { kind: 'play', message:
+// 'voicemail' | 'live' } or { kind: 'hangup' }, and lines are what to print.
+// The recipe performs the action; this class never calls anything.
+//
+// Only two things happen: the beep plays the voicemail message, and a live
+// person plays the live message. Every other event is printed and ignored.
 class CallDecision {
-    constructor({ liveConfidence }) {
-        this.liveConfidence = liveConfidence;
+    constructor() {
         this.acted = false;
         this.outcome = null;
         this.finished = false;
         this.callEnded = false;
         this.lastVerdict = null;
         this.beep = null;
-        this.beepTimerStarted = false;
         this.callStatus = null;
         this.callDuration = null;
     }
@@ -180,55 +172,13 @@ class CallDecision {
             this.lastVerdict = { type: data.type, confidence: data.confidence };
             lines.push('Detection verdict: type=' + printable(data.type) + ' confidence=' + printable(data.confidence));
             if (typeof data.type === 'string' && data.type.startsWith(VERDICTS.humanPrefix)) {
-                if (typeof data.confidence === 'number' && data.confidence >= this.liveConfidence) {
-                    return this.#act({ kind: 'play', message: 'live' }, OUTCOMES.livePerson, lines);
-                }
-                lines.push('  Below DC_LIVE_CONFIDENCE=' + this.liveConfidence + ', so not acted on.');
-                return { action: null, lines, startBeepTimer: false };
+                return this.#act({ kind: 'play', message: 'live' }, OUTCOMES.livePerson, lines);
             }
-            if (data.type === VERDICTS.voicemailGreeting) {
-                // The beep timer starts once. A later verdict does not restart it.
-                const start = !this.acted && !this.finished && !this.beepTimerStarted;
-                this.beepTimerStarted = this.beepTimerStarted || start;
-                return { action: null, lines, startBeepTimer: start };
-            }
-            if (data.type === VERDICTS.voicemailFull || data.type === VERDICTS.voicemailNotSetup) {
-                lines.push('The mailbox cannot take a message (' + data.type + '), so the call is hung up.');
-                return this.#act({ kind: 'hangup' }, OUTCOMES.voicemailUnavailable, lines);
-            }
-            if (data.type === VERDICTS.silence) {
-                return this.#act({ kind: 'hangup' }, OUTCOMES.noAnswerDetected, lines);
-            }
-            return { action: null, lines, startBeepTimer: false };
-        }
-
-        if (event === 'timeout') {
-            lines.push('Detection timeout: no verdict within detection_timeout_sec.');
-            return this.#act({ kind: 'hangup' }, OUTCOMES.noAnswerDetected, lines);
-        }
-
-        if (event === 'error') {
-            lines.push('Detection error: code=' + printable(data.code) + ' error=' + printable(data.error) + ' recoverable=' + printable(data.recoverable));
-            if (data.recoverable === true) {
-                return { action: null, lines, startBeepTimer: false };
-            }
-            return this.#act({ kind: 'hangup' }, OUTCOMES.detectionError, lines);
-        }
-
-        if (event === 'screening') {
-            lines.push('Detection screening: screening_type=' + printable(data.screening_type)
-                + ' suggested_action=' + printable(data.suggested_action)
-                + ' suggested_dtmf=' + printable(data.suggested_dtmf));
-            return { action: null, lines, startBeepTimer: false };
-        }
-
-        if (event === 'close') {
-            lines.push('Detection session closed: reason=' + printable(data.reason));
-            return { action: null, lines, startBeepTimer: false };
+            return { action: null, lines };
         }
 
         lines.push('Detection event ' + printable(event) + ' (not used by this recipe)');
-        return { action: null, lines, startBeepTimer: false };
+        return { action: null, lines };
     }
 
     onStatus({ status, duration }) {
@@ -238,17 +188,13 @@ class CallDecision {
         }
         const lines = ['Twilio call status: ' + printable(status) + (duration ? ' (CallDuration ' + printable(duration) + ')' : '')];
         if (!TERMINAL_STATUSES.includes(status)) {
-            return { action: null, lines, startBeepTimer: false };
+            return { action: null, lines };
         }
         this.finished = true;
         if (!this.acted) {
             this.outcome = NOT_ANSWERED_STATUSES.includes(status) ? OUTCOMES.notAnswered : OUTCOMES.endedBeforeAction;
         }
-        return { action: null, lines, startBeepTimer: false };
-    }
-
-    onBeepTimeout() {
-        return this.#act({ kind: 'play', message: 'voicemail' }, OUTCOMES.voicemailNoBeep, ['No beep arrived in time, so the voicemail message plays anyway.']);
+        return { action: null, lines };
     }
 
     onDeadline() {
@@ -266,11 +212,11 @@ class CallDecision {
             if (this.acted) {
                 lines.push('  Already acted on this call (' + this.outcome + '), so no new action.');
             }
-            return { action: null, lines, startBeepTimer: false };
+            return { action: null, lines };
         }
         this.acted = true;
         this.outcome = outcome;
-        return { action, lines, startBeepTimer: false };
+        return { action, lines };
     }
 }
 

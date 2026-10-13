@@ -10,15 +10,12 @@ import { findSampleValues, isSampleValue, sampleMessage } from './sample-values.
 import { DEFAULT_TWILIO_BASE_URL } from './twilio.js';
 
 const DEFAULT_DETECTION_URL = 'wss://detect.dropcowboy.com/carrier/ws/twilio';
-const STRATEGIES = ['standard', 'beep_only', 'live_check'];
 const E164 = /^\+\d{8,15}$/;
 const ACCOUNT_SID = /^AC[0-9a-fA-F]{32}$/;
 const ZERO_ACCOUNT_SID = /^AC0{32}$/;
 const MAX_MESSAGE_CHARACTERS = 1000;
 
 const RANGES = {
-    DC_DETECTION_TIMEOUT_SEC: { min: 5, max: 120, fallback: 45 },
-    DC_BEEP_WAIT_SECONDS: { min: 1, max: 60, fallback: 20 },
     DC_RING_SECONDS: { min: 5, max: 60, fallback: 30 },
     DC_WAIT_SECONDS: { min: 60, max: 600, fallback: 180 }
 };
@@ -117,15 +114,6 @@ function detectSettingsFromEnv(env) {
             ranges[name] = Number(raw);
         }
     }
-    let liveConfidence = 0.6;
-    const rawConfidence = value('DC_LIVE_CONFIDENCE');
-    if (rawConfidence !== null) {
-        if (!/^(\d+(\.\d*)?|\.\d+)$/.test(rawConfidence) || Number(rawConfidence) > 1) {
-            problems.push('DC_LIVE_CONFIDENCE must be a number from 0 to 1 (default 0.6).');
-        } else {
-            liveConfidence = Number(rawConfidence);
-        }
-    }
     let port = null;
     try {
         port = receiverPort(env);
@@ -133,13 +121,7 @@ function detectSettingsFromEnv(env) {
         problems.push(err.message);
     }
 
-    // 7. Strategy.
-    const strategy = value('DC_DETECTION_STRATEGY') || 'standard';
-    if (!STRATEGIES.includes(strategy)) {
-        problems.push('DC_DETECTION_STRATEGY must be one of ' + STRATEGIES.join(', ') + ' (default standard).');
-    }
-
-    // 8. Values copied from our docs and fixtures.
+    // 7. Values copied from our docs and fixtures.
     const samples = findSampleValues(env);
     for (let i = 0; i < samples.length; i++) {
         problems.push(samples[i]);
@@ -180,10 +162,6 @@ function detectSettingsFromEnv(env) {
         voicemailMessage,
         liveMessage,
         liveFallsBackToVoicemail: liveAudio === null && liveText === null,
-        strategy,
-        detectionTimeoutSec: ranges.DC_DETECTION_TIMEOUT_SEC,
-        liveConfidence,
-        beepWaitSeconds: ranges.DC_BEEP_WAIT_SECONDS,
         ringSeconds: ranges.DC_RING_SECONDS,
         waitSeconds: ranges.DC_WAIT_SECONDS,
         port
@@ -245,4 +223,4 @@ function isAudioUrl(value) {
     return url.protocol === 'https:' && /\.(mp3|wav)$/i.test(url.pathname);
 }
 
-export { DEFAULT_DETECTION_URL, MAX_MESSAGE_CHARACTERS, STRATEGIES, detectSettingsFromEnv, isPublicHost, publicUrlProblem };
+export { DEFAULT_DETECTION_URL, MAX_MESSAGE_CHARACTERS, detectSettingsFromEnv, isPublicHost, publicUrlProblem };

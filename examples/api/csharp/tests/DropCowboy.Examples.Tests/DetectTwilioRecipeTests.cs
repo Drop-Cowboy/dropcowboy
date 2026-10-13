@@ -56,7 +56,7 @@ public sealed class DetectTwilioRecipeTests
 
         Assert.Equal([new("Twiml", BeepTwiml)], Form(Assert.Single(run.Updates).Body));
         Assert.Equal("voicemail_on_beep", Summary(run, "outcome"));
-        Assert.Contains("Verdict: speech.voicemail.greeting (confidence 0.91). Waiting up to", run.Output);
+        Assert.Contains("Verdict: speech.voicemail.greeting (confidence 0.91). No action.", run.Output);
         Assert.Equal("speech.voicemail.greeting, confidence 0.91", Summary(run, "last verdict"));
         Assert.Equal("timestamp_ms=6420 duration_ms=380", Summary(run, "beep"));
         Assert.Matches("^[0-9]+ ms$", Summary(run, "update latency"));
@@ -64,8 +64,8 @@ public sealed class DetectTwilioRecipeTests
         Assert.Equal("21", Summary(run, "CallDuration"));
         Assert.Equal(DetectTwilioScenario.CallSid, Summary(run, "CallSid"));
         Assert.Equal(s.Sim.CallId, Summary(run, "call_id"));
-        Assert.Equal("3 received, 0 duplicates, 0 ignored", Summary(run, "Detection webhooks"));
-        Assert.Contains("Detection closed the stream (reason=normal)", run.Output);
+        Assert.Equal("3 received, 0 ignored", Summary(run, "Detection webhooks"));
+        Assert.Contains("Already acted on this call (voicemail_on_beep), so no new action.", run.Output);
         Assert.Contains("Temporary Detection key deleted.", run.Output);
     }
 
@@ -102,11 +102,11 @@ public sealed class DetectTwilioRecipeTests
         var run = await s.RunAsync(s.Env());
 
         Assert.True(run.ExitCode == 0, run.All);
-        Assert.Equal(StartTwiml(DetectTwilioScenario.CreatedKey, s.Sim.CallId!, "standard", 45, 56), s.Sim.Twiml);
+        Assert.Equal(StartTwiml(DetectTwilioScenario.CreatedKey, s.Sim.CallId!, 190), s.Sim.Twiml);
     }
 
     [Fact]
-    public async Task StartTwimlIsTheSameWhenTheMessagesAreText()
+    public async Task StartTwimlIsTheSameWhenTheMessagesAreTextAndPausesForTheRunLimitPlusTen()
     {
         await using var s = await DetectTwilioScenario.StartAsync();
         s.Script = async sim =>
@@ -117,10 +117,10 @@ public sealed class DetectTwilioRecipeTests
 
         var run = await s.RunAsync(s.Env(
             ("DC_VM_AUDIO_URL", null), ("DC_VM_TEXT", "Hello from the office."), ("DC_LIVE_TEXT", "Hi there."),
-            ("DC_DETECTION_STRATEGY", "live_check"), ("DC_DETECTION_TIMEOUT_SEC", "30"), ("DC_BEEP_WAIT_SECONDS", "15")));
+            ("DC_WAIT_SECONDS", "100")));
 
         Assert.True(run.ExitCode == 0, run.All);
-        Assert.Equal(StartTwiml(DetectTwilioScenario.CreatedKey, s.Sim.CallId!, "live_check", 30, 55), s.Sim.Twiml);
+        Assert.Equal(StartTwiml(DetectTwilioScenario.CreatedKey, s.Sim.CallId!, 110), s.Sim.Twiml);
     }
 
     [Fact]
@@ -340,7 +340,7 @@ public sealed class DetectTwilioRecipeTests
     // ---- Decisions ---------------------------------------------------------------------
 
     [Fact]
-    public async Task LivePersonAtTheThresholdPlaysTheLiveMessage()
+    public async Task LivePersonPlaysTheLiveMessage()
     {
         await using var s = await DetectTwilioScenario.StartAsync();
         s.Script = async sim =>
@@ -351,7 +351,7 @@ public sealed class DetectTwilioRecipeTests
             await sim.StatusAsync("completed", "8");
         };
 
-        var run = await s.RunAsync(s.Env(("DC_LIVE_CONFIDENCE", "0.6"), ("DC_LIVE_TEXT", "Hi, it's Sam & \"team\" <here>.")));
+        var run = await s.RunAsync(s.Env(("DC_LIVE_TEXT", "Hi, it's Sam & \"team\" <here>.")));
 
         Assert.True(run.ExitCode == 0, run.All);
         Assert.Equal(
@@ -362,30 +362,32 @@ public sealed class DetectTwilioRecipeTests
     }
 
     [Theory]
-    [InlineData("speech.human.unknown")]
-    [InlineData("speech.human.adult")]
-    public async Task LivePersonAboveTheThresholdPlaysTheLiveMessage(string type)
+    [InlineData("speech.human.unknown", 0.93)]
+    [InlineData("speech.human.adult", 0.93)]
+    [InlineData("speech.human.unknown", 0.2)]
+    public async Task LivePersonAtAnyConfidencePlaysTheLiveMessage(string type, double confidence)
     {
         await using var s = await DetectTwilioScenario.StartAsync();
         s.Script = async sim =>
         {
             await sim.AnswerAsync();
-            await sim.EventAsync("detection", new JsonObject { ["type"] = type, ["confidence"] = 0.93, ["timestamp_ms"] = 1900 });
+            await sim.EventAsync("detection", new JsonObject { ["type"] = type, ["confidence"] = confidence, ["timestamp_ms"] = 1900 });
             await sim.WaitForUpdatesAsync();
             await sim.StatusAsync("completed", "8");
         };
 
-        var run = await s.RunAsync(s.Env(("DC_LIVE_CONFIDENCE", "0.8"), ("DC_LIVE_TEXT", "Hi, this is Example Dental.")));
+        var run = await s.RunAsync(s.Env(("DC_LIVE_TEXT", "Hi, this is Example Dental.")));
 
         Assert.True(run.ExitCode == 0, run.All);
         Assert.Equal(
             [new("Twiml", "<Response><Stop><Stream name=\"detection\"/></Stop><Say>Hi, this is Example Dental.</Say><Hangup/></Response>")],
             Form(Assert.Single(run.Updates).Body));
         Assert.Equal("live_person", Summary(run, "outcome"));
+        Assert.Contains($"Verdict: {type} (confidence {confidence.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)}). Playing the live message.", run.Output);
     }
 
     [Fact]
-    public async Task DefaultThresholdActsOnAnEarlyVerdictAndFallsBackToTheVoicemailMessage()
+    public async Task LivePersonFallsBackToTheVoicemailMessage()
     {
         await using var s = await DetectTwilioScenario.StartAsync();
         s.Script = async sim =>
@@ -401,25 +403,6 @@ public sealed class DetectTwilioRecipeTests
         Assert.True(run.ExitCode == 0, run.All);
         Assert.Equal([new("Twiml", BeepTwiml)], Form(Assert.Single(run.Updates).Body));
         Assert.Equal("live_person", Summary(run, "outcome"));
-    }
-
-    [Fact]
-    public async Task LivePersonBelowTheThresholdDoesNothing()
-    {
-        await using var s = await DetectTwilioScenario.StartAsync();
-        s.Script = async sim =>
-        {
-            await sim.AnswerAsync();
-            await sim.FixtureAsync("detection.live-person.json");
-            await sim.StatusAsync("completed", "8");
-        };
-
-        var run = await s.RunAsync(s.Env(("DC_LIVE_CONFIDENCE", "0.9")));
-
-        Assert.True(run.ExitCode == 0, run.All);
-        Assert.Empty(run.Updates);
-        Assert.Equal("ended_before_action", Summary(run, "outcome"));
-        Assert.Contains("Verdict: speech.human.unknown (confidence 0.6), below DC_LIVE_CONFIDENCE 0.9. Logged, not acted on.", run.Output);
     }
 
     [Fact]
@@ -444,34 +427,16 @@ public sealed class DetectTwilioRecipeTests
     [Theory]
     [InlineData("speech.voicemail.full")]
     [InlineData("speech.voicemail.not_setup")]
-    public async Task MailboxThatCannotTakeAMessageHangsUp(string type)
+    [InlineData("speech.silence")]
+    [InlineData("speech.ivr")]
+    public async Task OtherVerdictsPrintALineAndDoNothing(string type)
     {
         await using var s = await DetectTwilioScenario.StartAsync();
         s.Script = async sim =>
         {
             await sim.AnswerAsync();
             await sim.EventAsync("detection", new JsonObject { ["type"] = type, ["confidence"] = 0.88, ["timestamp_ms"] = 3100 });
-            await sim.WaitForUpdatesAsync();
             await sim.StatusAsync("completed", "6");
-        };
-
-        var run = await s.RunAsync(s.Env());
-
-        Assert.True(run.ExitCode == 0, run.All);
-        Assert.Equal(HangUp, Assert.Single(run.Updates).Body.Split('&'));
-        Assert.Equal("voicemail_unavailable", Summary(run, "outcome"));
-        Assert.Contains($"The mailbox cannot take a message ({type}), so the call is hung up.", run.Output);
-    }
-
-    [Fact]
-    public async Task IvrVerdictDoesNothing()
-    {
-        await using var s = await DetectTwilioScenario.StartAsync();
-        s.Script = async sim =>
-        {
-            await sim.AnswerAsync();
-            await sim.EventAsync("detection", new JsonObject { ["type"] = "speech.ivr", ["confidence"] = 0.9, ["timestamp_ms"] = 2500 });
-            await sim.StatusAsync("completed", "8");
         };
 
         var run = await s.RunAsync(s.Env());
@@ -479,72 +444,33 @@ public sealed class DetectTwilioRecipeTests
         Assert.True(run.ExitCode == 0, run.All);
         Assert.Empty(run.Updates);
         Assert.Equal("ended_before_action", Summary(run, "outcome"));
-        Assert.Contains("Verdict: speech.ivr (confidence 0.9). No action.", run.Output);
+        Assert.Contains($"Verdict: {type} (confidence 0.88). No action.", run.Output);
     }
 
     [Fact]
-    public async Task VoicemailWithNoBeepPlaysWhenTheTimerRunsOut()
-    {
-        await using var s = await DetectTwilioScenario.StartAsync();
-        s.Script = async sim =>
-        {
-            await sim.AnswerAsync();
-            await sim.FixtureAsync("detection.voicemail.json");
-            await sim.WaitForUpdatesAsync();
-            await sim.StatusAsync("completed", "12");
-        };
-
-        var run = await s.RunAsync(s.Env());
-
-        Assert.True(run.ExitCode == 0, run.All);
-        Assert.Equal([new("Twiml", BeepTwiml)], Form(Assert.Single(run.Updates).Body));
-        Assert.Equal("voicemail_no_beep", Summary(run, "outcome"));
-        Assert.Equal("(none)", Summary(run, "beep"));
-        Assert.Contains("Verdict: speech.voicemail.greeting (confidence 0.91). Waiting up to", run.Output);
-    }
-
-    [Fact]
-    public async Task SilenceHangsUp()
-    {
-        await using var s = await DetectTwilioScenario.StartAsync();
-        s.Script = async sim =>
-        {
-            await sim.AnswerAsync();
-            await sim.EventAsync("detection", new JsonObject { ["type"] = "speech.silence", ["confidence"] = 0.95, ["timestamp_ms"] = 5000 });
-            await sim.WaitForUpdatesAsync();
-            await sim.StatusAsync("completed", "6");
-        };
-
-        var run = await s.RunAsync(s.Env());
-
-        Assert.True(run.ExitCode == 0, run.All);
-        Assert.Equal(HangUp, Assert.Single(run.Updates).Body.Split('&'));
-        Assert.Equal("no_answer_detected", Summary(run, "outcome"));
-    }
-
-    [Fact]
-    public async Task DetectionTimeoutHangsUp()
+    public async Task TimeoutEventDoesNothing()
     {
         await using var s = await DetectTwilioScenario.StartAsync();
         s.Script = async sim =>
         {
             await sim.AnswerAsync();
             await sim.EventAsync("timeout", new JsonObject { ["timestamp_ms"] = 45000 });
-            await sim.WaitForUpdatesAsync();
             await sim.StatusAsync("completed", "46");
         };
 
         var run = await s.RunAsync(s.Env());
 
         Assert.True(run.ExitCode == 0, run.All);
-        Assert.Equal(HangUp, Assert.Single(run.Updates).Body.Split('&'));
-        Assert.Equal("no_answer_detected", Summary(run, "outcome"));
+        Assert.Empty(run.Updates);
+        Assert.Equal("ended_before_action", Summary(run, "outcome"));
+        Assert.Contains("Detection reported a timeout. No action.", run.Output);
     }
 
     [Theory]
     [InlineData(false)]
+    [InlineData(true)]
     [InlineData(null)]
-    public async Task ErrorNotMarkedRecoverableHangsUp(bool? recoverable)
+    public async Task ErrorEventDoesNothing(bool? recoverable)
     {
         await using var s = await DetectTwilioScenario.StartAsync();
         s.Script = async sim =>
@@ -557,26 +483,45 @@ public sealed class DetectTwilioRecipeTests
             }
 
             await sim.EventAsync("error", data);
-            await sim.WaitForUpdatesAsync();
             await sim.StatusAsync("completed", "5");
         };
 
         var run = await s.RunAsync(s.Env());
 
         Assert.True(run.ExitCode == 0, run.All);
-        Assert.Equal(HangUp, Assert.Single(run.Updates).Body.Split('&'));
-        Assert.Equal("detection_error", Summary(run, "outcome"));
+        Assert.Empty(run.Updates);
+        Assert.Equal("ended_before_action", Summary(run, "outcome"));
         Assert.Contains("code=audio_stream_failed error=The audio stream stopped.", run.Output);
     }
 
     [Fact]
-    public async Task RecoverableErrorScreeningAndCloseDoNothing()
+    public async Task VoicemailGreetingWithNoBeepDoesNothingAndTheRunEndsAtTheDeadline()
     {
         await using var s = await DetectTwilioScenario.StartAsync();
         s.Script = async sim =>
         {
             await sim.AnswerAsync();
-            await sim.EventAsync("error", new JsonObject { ["code"] = "low_audio", ["error"] = "Audio was quiet.", ["recoverable"] = true });
+            await sim.FixtureAsync("detection.voicemail.json");
+        };
+
+        var run = await s.RunAsync(s.Env(), wait: TimeSpan.FromSeconds(1.5));
+
+        Assert.True(run.ExitCode == 0, run.All);
+        Assert.Equal(HangUp, Assert.Single(run.Updates).Body.Split('&'));
+        Assert.Equal("no_result", Summary(run, "outcome"));
+        Assert.Equal("(none)", Summary(run, "beep"));
+        Assert.Contains("Verdict: speech.voicemail.greeting (confidence 0.91). No action.", run.Output);
+        Assert.Contains(DetectTwilio.NoResultMessage, run.Output);
+        Assert.DoesNotContain(DetectTwilio.NoWebhookMessage, run.Output);
+    }
+
+    [Fact]
+    public async Task ScreeningAndCloseDoNothing()
+    {
+        await using var s = await DetectTwilioScenario.StartAsync();
+        s.Script = async sim =>
+        {
+            await sim.AnswerAsync();
             await sim.EventAsync("screening", new JsonObject
             {
                 ["screening_type"] = "call_screen", ["suggested_action"] = "speak", ["suggested_dtmf"] = "1"
@@ -592,7 +537,7 @@ public sealed class DetectTwilioRecipeTests
         Assert.Equal("ended_before_action", Summary(run, "outcome"));
         Assert.Contains("screening_type=call_screen suggested_action=speak suggested_dtmf=1", run.Output);
         Assert.Contains("reason=normal", run.Output);
-        Assert.Equal("3 received, 0 duplicates, 0 ignored", Summary(run, "Detection webhooks"));
+        Assert.Equal("2 received, 0 ignored", Summary(run, "Detection webhooks"));
     }
 
     [Fact]
@@ -618,7 +563,7 @@ public sealed class DetectTwilioRecipeTests
     }
 
     [Fact]
-    public async Task RepeatedDeliveryIsActedOnOnce()
+    public async Task DuplicateBeepDeliveryIsActedOnOnce()
     {
         await using var s = await DetectTwilioScenario.StartAsync();
         s.Script = async sim =>
@@ -634,7 +579,9 @@ public sealed class DetectTwilioRecipeTests
 
         Assert.True(run.ExitCode == 0, run.All);
         Assert.Single(run.Updates);
-        Assert.Equal("1 received, 1 duplicates, 0 ignored", Summary(run, "Detection webhooks"));
+        Assert.Equal("voicemail_on_beep", Summary(run, "outcome"));
+        Assert.Equal("2 received, 0 ignored", Summary(run, "Detection webhooks"));
+        Assert.Contains("Already acted on this call (voicemail_on_beep), so no new action.", run.Output);
     }
 
     [Fact]
@@ -653,7 +600,7 @@ public sealed class DetectTwilioRecipeTests
         Assert.True(run.ExitCode == 0, run.All);
         Assert.Empty(run.Updates);
         Assert.Equal("ended_before_action", Summary(run, "outcome"));
-        Assert.Equal("1 received, 0 duplicates, 1 ignored", Summary(run, "Detection webhooks"));
+        Assert.Equal("1 received, 1 ignored", Summary(run, "Detection webhooks"));
         Assert.Contains("is not this run's call: ignored", run.Output);
     }
 
@@ -759,14 +706,14 @@ public sealed class DetectTwilioRecipeTests
         s.Script = async sim =>
         {
             await sim.AnswerAsync();
-            await sim.EventAsync("detection", new JsonObject { ["type"] = "speech.silence", ["confidence"] = 0.95 });
             await sim.WaitForUpdatesAsync();
         };
 
-        var run = await s.RunAsync(s.Env());
+        var run = await s.RunAsync(s.Env(), wait: TimeSpan.FromSeconds(1.5));
 
         Assert.True(run.ExitCode == 0, run.All);
         Assert.Single(run.Updates);
+        Assert.Equal("no_result", Summary(run, "outcome"));
         Assert.Contains("already ended", run.Output);
         Assert.Equal(string.Empty, run.Error);
     }
@@ -942,8 +889,6 @@ public sealed class DetectTwilioRecipeTests
         { "DC_VM_AUDIO_URL", "https://audio.example.net/voicemail.ogg", "DC_VM_AUDIO_URL must be a public https:// address" },
         { "DC_WAIT_SECONDS", "0", "DC_WAIT_SECONDS=0 is not allowed" },
         { "DC_WAIT_SECONDS", "59", "DC_WAIT_SECONDS must be a whole number from 60 to 600" },
-        { "DC_DETECTION_STRATEGY", "fast", "DC_DETECTION_STRATEGY must be standard, beep_only or live_check" },
-        { "DC_DETECTION_STRATEGY", "Standard", "DC_DETECTION_STRATEGY must be standard, beep_only or live_check" },
         { "DC_TO", "+12125550100", "DC_TO=+12125550100: " },
         { "TWILIO_FROM", "+13125550100", "TWILIO_FROM=+13125550100: " },
         { "DC_VM_AUDIO_URL", "https://media.example.com/voicemail.mp3", "DC_VM_AUDIO_URL=https://media.example.com/voicemail.mp3: " }
@@ -977,6 +922,25 @@ public sealed class DetectTwilioRecipeTests
         Assert.Empty(s.Twilio.Requests);
     }
 
+    [Fact]
+    public async Task RemovedSettingsAreNoLongerRead()
+    {
+        await using var s = await DetectTwilioScenario.StartAsync();
+        s.Script = async sim =>
+        {
+            await sim.AnswerAsync();
+            await sim.StatusAsync("completed", "2");
+        };
+
+        var run = await s.RunAsync(s.Env(
+            ("DC_DETECTION_STRATEGY", "fast"), ("DC_DETECTION_TIMEOUT_SEC", "1"),
+            ("DC_BEEP_WAIT_SECONDS", "0"), ("DC_LIVE_CONFIDENCE", "high")));
+
+        Assert.True(run.ExitCode == 0, run.All);
+        Assert.Equal(string.Empty, run.Error);
+        Assert.Equal(StartTwiml(DetectTwilioScenario.CreatedKey, s.Sim.CallId!, 190), s.Sim.Twiml);
+    }
+
     // ---- Helpers -----------------------------------------------------------------------
 
     private static void AssertNoSecrets(string text)
@@ -988,7 +952,7 @@ public sealed class DetectTwilioRecipeTests
         Assert.DoesNotContain(DetectTwilioScenario.AccountSid, text);
     }
 
-    internal static string StartTwiml(string key, string callId, string strategy, int timeout, int pause)
+    internal static string StartTwiml(string key, string callId, int pause)
     {
         return $$"""
             <?xml version="1.0" encoding="UTF-8"?>
@@ -998,9 +962,7 @@ public sealed class DetectTwilioRecipeTests
                   <Parameter name="api_key" value="{{key}}"/>
                   <Parameter name="webhook_url" value="https://tunnel.example.org/webhooks/detection"/>
                   <Parameter name="webhook_events" value="detection,beep,screening,timeout,error,close"/>
-                  <Parameter name="strategy" value="{{strategy}}"/>
                   <Parameter name="call_id" value="{{callId}}"/>
-                  <Parameter name="detection_timeout_sec" value="{{timeout}}"/>
                 </Stream>
               </Start>
               <Pause length="{{pause}}"/>

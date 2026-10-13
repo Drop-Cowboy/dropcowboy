@@ -21,10 +21,6 @@ public sealed partial record DetectTwilioSettings(
     string DetectionUrl,
     VoiceMessage Voicemail,
     VoiceMessage? Live,
-    string Strategy,
-    int DetectionTimeoutSec,
-    double LiveConfidence,
-    int BeepWaitSeconds,
     int RingSeconds,
     int WaitSeconds,
     int Port)
@@ -32,8 +28,6 @@ public sealed partial record DetectTwilioSettings(
     public const string DefaultDetectionUrl = "wss://detect.dropcowboy.com/carrier/ws/twilio";
     public const int MaxTextCharacters = 1000;
     public const string ZeroSidMessage = "this is the placeholder from our fixtures; use your own";
-
-    private static readonly string[] Strategies = ["standard", "beep_only", "live_check"];
 
     [GeneratedRegex(@"^\+\d{8,15}$")]
     private static partial Regex E164();
@@ -132,9 +126,6 @@ public sealed partial record DetectTwilioSettings(
         }
 
         // 6. Numeric ranges.
-        var timeout = WholeNumber(config, problems, "DC_DETECTION_TIMEOUT_SEC", 45, 5, 120);
-        var confidence = Confidence(config, problems);
-        var beepWait = WholeNumber(config, problems, "DC_BEEP_WAIT_SECONDS", 20, 1, 60);
         var ring = WholeNumber(config, problems, "DC_RING_SECONDS", 30, 5, 60);
         int wait;
         if (config.Get("DC_WAIT_SECONDS") == "0")
@@ -157,14 +148,7 @@ public sealed partial record DetectTwilioSettings(
             problems.Add(ex.Message);
         }
 
-        // 7. Strategy.
-        var strategy = config.Get("DC_DETECTION_STRATEGY") ?? "standard";
-        if (!Strategies.Contains(strategy))
-        {
-            problems.Add("DC_DETECTION_STRATEGY must be standard, beep_only or live_check.");
-        }
-
-        // 8. In the same pass, after the problems above: values copied from our docs and fixtures.
+        // 7. In the same pass, after the problems above: values copied from our docs and fixtures.
         problems.AddRange(SampleValues.Find(config));
         if (SampleValues.IsSample(from))
         {
@@ -192,10 +176,6 @@ public sealed partial record DetectTwilioSettings(
             detectionUrl,
             vmAudio is not null ? VoiceMessage.Audio(vmAudio) : VoiceMessage.Text(vmText!),
             liveAudio is not null ? VoiceMessage.Audio(liveAudio) : liveText is not null ? VoiceMessage.Text(liveText) : null,
-            strategy,
-            timeout,
-            confidence,
-            beepWait,
             ring,
             wait,
             port);
@@ -333,24 +313,6 @@ public sealed partial record DetectTwilioSettings(
         {
             problems.Add($"{name} must be a whole number from {min} to {max}.");
             return fallback;
-        }
-
-        return number;
-    }
-
-    private static double Confidence(Config config, List<string> problems)
-    {
-        var raw = config.Get("DC_LIVE_CONFIDENCE");
-        if (raw is null)
-        {
-            return 0.6;
-        }
-
-        var parsed = double.TryParse(raw, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var number);
-        if (!parsed || number < 0 || number > 1)
-        {
-            problems.Add("DC_LIVE_CONFIDENCE must be a number from 0 to 1 (default 0.6).");
-            return 0.6;
         }
 
         return number;

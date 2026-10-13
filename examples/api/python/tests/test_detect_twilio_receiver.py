@@ -4,7 +4,6 @@ Send only to people who agreed to hear from you. Test with numbers you own.
 """
 from __future__ import annotations
 
-import json
 import time
 
 import pytest
@@ -33,7 +32,7 @@ CALL_ID = "3a9e5c1f-7b2d-4e68-9f04-8c6a2e4b1d97"
 
 
 def expected_twiml(detection_url="wss://detect.dropcowboy.com/carrier/ws/twilio", key=DETECTION_KEY,
-                   strategy="standard", timeout=45, pause=75):
+                   pause=190):
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         "<Response>\n"
@@ -42,9 +41,7 @@ def expected_twiml(detection_url="wss://detect.dropcowboy.com/carrier/ws/twilio"
         '      <Parameter name="api_key" value="' + key + '"/>\n'
         '      <Parameter name="webhook_url" value="' + PUBLIC_URL + '/webhooks/detection"/>\n'
         '      <Parameter name="webhook_events" value="detection,beep,screening,timeout,error,close"/>\n'
-        '      <Parameter name="strategy" value="' + strategy + '"/>\n'
         '      <Parameter name="call_id" value="' + CALL_ID + '"/>\n'
-        '      <Parameter name="detection_timeout_sec" value="' + str(timeout) + '"/>\n'
         "    </Stream>\n"
         "  </Start>\n"
         '  <Pause length="' + str(pause) + '"/>\n'
@@ -55,7 +52,7 @@ def expected_twiml(detection_url="wss://detect.dropcowboy.com/carrier/ws/twilio"
 
 def make_receiver(twiml=None, clock_ms=None, lines=None):
     twiml = twiml or voice_twiml("wss://detect.dropcowboy.com/carrier/ws/twilio", DETECTION_KEY, PUBLIC_URL,
-                                 "standard", CALL_ID, 45, 20)
+                                 CALL_ID, 190)
     out = lines.append if lines is not None else (lambda _line: None)
     return DetectionReceiver(PUBLIC_URL, AUTH_TOKEN, DETECTION_KEY, CALL_ID, twiml, clock_ms=clock_ms, out=out)
 
@@ -72,19 +69,18 @@ def served():
 
 
 def test_voice_twiml_is_exact():
-    twiml = voice_twiml("wss://detect.dropcowboy.com/carrier/ws/twilio", DETECTION_KEY, PUBLIC_URL, "standard",
-                        CALL_ID, 45, 20)
+    twiml = voice_twiml("wss://detect.dropcowboy.com/carrier/ws/twilio", DETECTION_KEY, PUBLIC_URL,
+                        CALL_ID, 190)
     assert twiml == expected_twiml()
 
 
-def test_voice_twiml_pause_and_settings():
-    twiml = voice_twiml("wss://detect.dropcowboy.com/carrier/ws/twilio", DETECTION_KEY, PUBLIC_URL, "live_check",
-                        CALL_ID, 30, 5)
-    assert twiml == expected_twiml(strategy="live_check", timeout=30, pause=45)
+def test_voice_twiml_pause_is_the_length_it_is_given():
+    twiml = voice_twiml("wss://detect.dropcowboy.com/carrier/ws/twilio", DETECTION_KEY, PUBLIC_URL, CALL_ID, 70)
+    assert twiml == expected_twiml(pause=70)
 
 
 def test_voice_twiml_escapes_attribute_values():
-    twiml = voice_twiml("wss://detect.example.org/ws?a=1&b=2", "k&<>\"'y", PUBLIC_URL, "standard", CALL_ID, 45, 20)
+    twiml = voice_twiml("wss://detect.example.org/ws?a=1&b=2", "k&<>\"'y", PUBLIC_URL, CALL_ID, 190)
     assert twiml == expected_twiml(detection_url="wss://detect.example.org/ws?a=1&amp;b=2",
                                    key="k&amp;&lt;&gt;&quot;&apos;y")
 
@@ -209,30 +205,18 @@ def test_a_signed_body_that_is_not_an_object_answers_400(served, body):
     assert receiver.received_events() == []
 
 
-def test_a_repeated_delivery_id_is_a_duplicate(served):
+def test_every_delivery_is_recorded_and_answered_the_same_way(served):
     receiver, server = served
     raw = detection_body("detection.voicemail.json", CALL_ID)
     first = post_detection(server.base_url, raw)
     second = post_detection(server.base_url, raw)
+    assert first.status_code == 200 and second.status_code == 200
     assert first.json() == {"received": True}
-    assert second.status_code == 200
-    assert second.json() == {"received": True, "duplicate": True}
-    assert len(receiver.received_events()) == 1
+    assert second.json() == {"received": True}
+    assert len(receiver.received_events()) == 2
     counts = receiver.counts()
-    assert (counts.received, counts.duplicates, counts.ignored) == (1, 1, 0)
-
-
-def test_the_delivery_id_header_dedupes_when_the_body_has_none(served):
-    receiver, server = served
-    body = json.loads(detection_body("detection.voicemail.json", CALL_ID))
-    del body["delivery_id"]
-    raw = json.dumps(body).encode()
-    headers = {"X-Delivery-Id": "7c3e9a1f-5b2d-4e80-9a6c-1d3f5b7e9c24"}
-    first = post_detection(server.base_url, raw, headers=headers)
-    second = post_detection(server.base_url, raw, headers=headers)
-    assert first.json() == {"received": True}
-    assert second.json() == {"received": True, "duplicate": True}
-    assert len(receiver.received_events()) == 1
+    assert (counts.received, counts.ignored) == (2, 0)
+    assert not hasattr(counts, "duplicates")
 
 
 def test_another_call_id_is_recorded_as_ignored_and_logged():

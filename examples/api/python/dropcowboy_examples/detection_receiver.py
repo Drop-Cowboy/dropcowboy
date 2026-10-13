@@ -8,7 +8,7 @@ This places a real phone call. Twilio bills the call and Drop Cowboy bills the D
     POST /webhooks/detection   Detection events for the call. Signed with the Detection key.
     POST /twilio/status        Twilio's status callback. Signed by Twilio.
 
-Each route only verifies, dedupes, records and answers. None of them calls Twilio or
+Each route only verifies, records and answers. None of them calls Twilio or
 Drop Cowboy: the recipe reads what was recorded and acts on it from its own thread.
 Serve `DetectionReceiver(...).app` the same way as the other receiver, for example with
 `EmbeddedServer` from receiver.py.
@@ -18,7 +18,7 @@ from __future__ import annotations
 import threading
 import time
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional
 
 from flask import Flask, Response, jsonify, request
 
@@ -55,11 +55,9 @@ class RecordedEvent:
 
 @dataclass
 class Counts:
-    """Detection webhooks accepted (including ignored ones), repeats answered as duplicates, and
-    accepted ones for another call_id."""
+    """Detection webhooks accepted (including ignored ones), and accepted ones for another call_id."""
 
     received: int = 0
-    duplicates: int = 0
     ignored: int = 0
 
 
@@ -85,7 +83,6 @@ class DetectionReceiver:
         self._out = out
         self._call_sid = ""
         self._events: List[RecordedEvent] = []
-        self._seen_delivery_ids: Set[str] = set()
         self._counts = Counts()
         self._changed = threading.Condition()
         self.app = self._build_app()
@@ -120,7 +117,7 @@ class DetectionReceiver:
 
     def counts(self) -> Counts:
         with self._changed:
-            return Counts(self._counts.received, self._counts.duplicates, self._counts.ignored)
+            return Counts(self._counts.received, self._counts.ignored)
 
     # Routes -------------------------------------------------------------------
 
@@ -190,19 +187,11 @@ class DetectionReceiver:
         if event is None:
             return jsonify({"error": "invalid_body"}), 400
 
-        # Detection retries a delivery with the same id, so dedupe is required. An
-        # in-memory set is enough here. In production use a database unique index.
-        delivery_id = event.get("delivery_id") or request.headers.get("X-Delivery-Id")
         name = event.get("event") if isinstance(event.get("event"), str) else "unknown"
         data = event.get("data") if isinstance(event.get("data"), dict) else {}
         ignored = event.get("call_id") != self.call_id
 
         with self._changed:
-            if delivery_id:
-                if str(delivery_id) in self._seen_delivery_ids:
-                    self._counts.duplicates += 1
-                    return jsonify({"received": True, "duplicate": True})
-                self._seen_delivery_ids.add(str(delivery_id))
             self._counts.received += 1
             if ignored:
                 self._counts.ignored += 1

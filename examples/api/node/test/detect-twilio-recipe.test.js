@@ -272,14 +272,15 @@ describe('detect-twilio: the call', () => {
 
     it('answers the call with TwiML that streams to Detection with this run\'s call_id', async () => {
         await mocks();
-        const call = await startCall({ run, env: detectEnv({ twilio }, { DC_DETECTION_STRATEGY: 'live_check', DC_DETECTION_TIMEOUT_SEC: '30', DC_BEEP_WAIT_SECONDS: '15' }), out, twilio });
+        const call = await startCall({ run, env: detectEnv({ twilio }), out, twilio });
         const res = await call.answer();
         const twiml = await res.text();
         assert.equal(res.headers.get('content-type'), 'text/xml');
         assert.ok(twiml.includes('<Parameter name="call_id" value="' + call.callId + '"/>'));
-        assert.ok(twiml.includes('<Parameter name="strategy" value="live_check"/>'));
+        assert.ok(!twiml.includes('name="strategy"'));
+        assert.ok(!twiml.includes('name="detection_timeout_sec"'));
         assert.ok(twiml.includes('<Parameter name="webhook_url" value="' + PUBLIC_URL + '/webhooks/detection"/>'));
-        assert.ok(twiml.includes('<Pause length="55"/>'));
+        assert.ok(twiml.includes('<Pause length="610"/>'));
         await complete(call);
     });
 });
@@ -301,9 +302,9 @@ describe('detect-twilio: decisions', () => {
         assert.deepEqual(outcome.beep, { timestamp_ms: 6420, duration_ms: 380 });
         assert.equal(outcome.callStatus, 'completed');
         assert.equal(outcome.callDuration, '21');
-        assert.deepEqual(outcome.webhooks, { received: 3, duplicates: 0, ignored: 0 });
+        assert.deepEqual(outcome.webhooks, { received: 3, ignored: 0 });
         assert.match(out.text(), /Twilio accepted the update \d+ ms after the receiver recorded the beep\./);
-        assert.match(out.text(), /Detection session closed: reason=normal/);
+        assert.match(out.text(), /Detection event close \(not used by this recipe\)/);
         assert.match(out.text(), /outcome:\s+voicemail_on_beep/);
         assert.match(out.text(), /last verdict:\s+type=speech\.voicemail\.greeting confidence=0\.91/);
         assert.match(out.text(), /beep:\s+timestamp_ms=6420 duration_ms=380/);
@@ -313,19 +314,14 @@ describe('detect-twilio: decisions', () => {
         assert.ok(!out.text().includes('Hung up the call'));
     });
 
-    for (const [name, confidence, data] of [
-        ['speech.human.unknown at the threshold', '0.6', undefined],
-        ['speech.human.unknown above the threshold', '0.5', undefined],
-        ['speech.human.unknown at 0.6 with the default threshold', undefined, undefined],
-        ['another speech.human. subtype', undefined, { type: 'speech.human.adult', confidence: 0.75 }]
+    for (const [name, data] of [
+        ['speech.human.unknown at 0.6', undefined],
+        ['speech.human.unknown at a low confidence', { confidence: 0.2 }],
+        ['another speech.human. subtype', { type: 'speech.human.adult', confidence: 0.75 }]
     ]) {
         it('plays the live message for ' + name, async () => {
             await mocks();
-            const settings = { DC_LIVE_TEXT: LIVE_TEXT };
-            if (confidence !== undefined) {
-                settings.DC_LIVE_CONFIDENCE = confidence;
-            }
-            const call = await startCall({ run, env: detectEnv({ twilio }, settings), out, twilio });
+            const call = await startCall({ run, env: detectEnv({ twilio }, { DC_LIVE_TEXT: LIVE_TEXT }), out, twilio });
             await call.answer();
             await call.detection('detection.live-person.json', { data });
             await waitUntil(() => call.updates()[0], 'the update');
@@ -347,18 +343,6 @@ describe('detect-twilio: decisions', () => {
         assert.match(out.text(), /no live message is set/);
     });
 
-    it('does nothing for speech.human.unknown below the threshold', async () => {
-        await mocks();
-        const call = await startCall({ run, env: detectEnv({ twilio }, { DC_LIVE_CONFIDENCE: '0.9' }), out, twilio });
-        await call.detection('detection.live-person.json');
-        await waitUntil(() => out.text().includes('not acted on'), 'the verdict');
-        const outcome = await complete(call);
-
-        assert.deepEqual(updateForms(), []);
-        assert.equal(outcome.outcome, 'ended_before_action');
-        assert.ok(out.lines.includes('  Below DC_LIVE_CONFIDENCE=0.9, so not acted on.'));
-    });
-
     for (const type of ['live_person', 'speech.ivr']) {
         it('does nothing for ' + type, async () => {
             await mocks();
@@ -373,27 +357,24 @@ describe('detect-twilio: decisions', () => {
         });
     }
 
-    it('plays the voicemail message when no beep follows a voicemail verdict in time', async () => {
+    it('does nothing after a voicemail verdict with no beep, and hangs up at the end of the run', async () => {
         await mocks();
-        const call = await startCall({ run, env: detectEnv({ twilio }, { DC_BEEP_WAIT_SECONDS: '5' }), out, twilio });
+        const call = await startCall({ run, env: detectEnv({ twilio }, { DC_WAIT_SECONDS: '60' }), out, twilio });
         await call.detection('detection.voicemail.json');
-        await waitUntil(() => call.updates()[0], 'the update after the beep timer');
-        const outcome = await complete(call);
+        const outcome = await call.running;
 
-        assert.equal(outcome.outcome, 'voicemail_no_beep');
-        assert.deepEqual(updateForms(), [playForm({ kind: 'play', value: VM_AUDIO_URL })]);
-        assert.match(out.text(), /recorded the beep timer/);
+        assert.equal(outcome.outcome, 'no_result');
+        assert.deepEqual(updateForms(), [[['Status', 'completed']]]);
     });
 
-    it('plays on the beep when it follows a voicemail verdict, and only once', async () => {
+    it('plays on the beep after a voicemail verdict, and only once', async () => {
         await mocks();
-        const call = await startCall({ run, env: detectEnv({ twilio }, { DC_BEEP_WAIT_SECONDS: '60' }), out, twilio });
+        const call = await startCall({ run, env: detectEnv({ twilio }), out, twilio });
         await call.detection('detection.voicemail.json');
-        await waitUntil(() => out.text().includes('Waiting up to 60 seconds for the beep'), 'the beep timer');
         await call.detection('detection.beep.json');
         await waitUntil(() => call.updates()[0], 'the update');
-        // Give the beep timer time to run out: it must not act a second time.
-        await new Promise((resolve) => setTimeout(resolve, 700));
+        await call.detection('detection.beep.json');
+        await new Promise((resolve) => setTimeout(resolve, 100));
         const outcome = await complete(call);
 
         assert.equal(outcome.outcome, 'voicemail_on_beep');
@@ -408,38 +389,25 @@ describe('detect-twilio: decisions', () => {
         return postDetection({ port: call.port, body });
     }
 
-    for (const [name, send, expected] of [
-        ['speech.silence', (call) => call.detection('detection.voicemail.json', { data: { type: 'speech.silence', confidence: 0.8 } }), 'no_answer_detected'],
-        ['speech.voicemail.full', (call) => call.detection('detection.voicemail.json', { data: { type: 'speech.voicemail.full', confidence: 0.8 } }), 'voicemail_unavailable'],
-        ['speech.voicemail.not_setup', (call) => call.detection('detection.voicemail.json', { data: { type: 'speech.voicemail.not_setup', confidence: 0.8 } }), 'voicemail_unavailable'],
-        ['timeout', (call) => postEvent(call, 'timeout', { timestamp_ms: 45000 }), 'no_answer_detected'],
-        ['a non-recoverable error', (call) => postEvent(call, 'error', { timestamp_ms: 3000, code: 'stream_error', error: 'Audio stopped', recoverable: false }), 'detection_error']
+    for (const [name, send] of [
+        ['speech.silence', (call) => call.detection('detection.voicemail.json', { data: { type: 'speech.silence', confidence: 0.8 } })],
+        ['speech.voicemail.full', (call) => call.detection('detection.voicemail.json', { data: { type: 'speech.voicemail.full', confidence: 0.8 } })],
+        ['speech.voicemail.not_setup', (call) => call.detection('detection.voicemail.json', { data: { type: 'speech.voicemail.not_setup', confidence: 0.8 } })],
+        ['a timeout', (call) => postEvent(call, 'timeout', { timestamp_ms: 45000 })],
+        ['a non-recoverable error', (call) => postEvent(call, 'error', { timestamp_ms: 3000, code: 'stream_error', error: 'Audio stopped', recoverable: false })],
+        ['a recoverable error', (call) => postEvent(call, 'error', { timestamp_ms: 3000, code: 'slow_audio', error: 'Late frames', recoverable: true })]
     ]) {
-        it('hangs up on ' + name, async () => {
+        it('takes no action on ' + name, async () => {
             await mocks();
             const call = await startCall({ run, env: detectEnv({ twilio }), out, twilio });
             await send(call);
-            await waitUntil(() => call.updates()[0], 'the hang-up');
+            await waitUntil(() => out.text().includes('Detection'), 'the event');
             const outcome = await complete(call);
 
-            assert.equal(outcome.outcome, expected);
-            assert.deepEqual(updateForms(), [[['Status', 'completed']]]);
-            if (expected === 'voicemail_unavailable') {
-                assert.ok(out.lines.includes('The mailbox cannot take a message (' + name + '), so the call is hung up.'));
-            }
+            assert.deepEqual(updateForms(), []);
+            assert.equal(outcome.outcome, 'ended_before_action');
         });
     }
-
-    it('does not act on a recoverable error', async () => {
-        await mocks();
-        const call = await startCall({ run, env: detectEnv({ twilio }), out, twilio });
-        await postEvent(call, 'error', { timestamp_ms: 3000, code: 'slow_audio', error: 'Late frames', recoverable: true });
-        await waitUntil(() => out.text().includes('recoverable=true'), 'the error line');
-        const outcome = await complete(call);
-
-        assert.deepEqual(updateForms(), []);
-        assert.equal(outcome.outcome, 'ended_before_action');
-    });
 
     it('acts once when events race', async () => {
         await mocks();
@@ -458,18 +426,16 @@ describe('detect-twilio: decisions', () => {
         assert.match(out.text(), /Already acted on this call/);
     });
 
-    it('ignores an event for another call_id and counts duplicates', async () => {
+    it('ignores an event for another call_id', async () => {
         await mocks();
         const call = await startCall({ run, env: detectEnv({ twilio }), out, twilio });
         await call.detection('detection.beep.json', { callId: '0d4f6b8a-2c1e-4e73-9a5b-7c9e1f3a5b20' });
-        await call.detection('detection.voicemail.json', { deliveryId: '6e8a0c2e-4f1b-4d37-a9c5-1b3d5f7a9c42' });
-        const dup = await call.detection('detection.voicemail.json', { deliveryId: '6e8a0c2e-4f1b-4d37-a9c5-1b3d5f7a9c42' });
-        assert.deepEqual(await dup.json(), { received: true, duplicate: true });
+        await call.detection('detection.voicemail.json');
         const outcome = await complete(call);
 
         assert.deepEqual(updateForms(), []);
-        assert.deepEqual(outcome.webhooks, { received: 2, duplicates: 1, ignored: 1 });
-        assert.match(out.text(), /Detection webhooks: 2 received, 1 duplicates, 1 ignored/);
+        assert.deepEqual(outcome.webhooks, { received: 2, ignored: 1 });
+        assert.match(out.text(), /Detection webhooks: 2 received, 1 ignored/);
     });
 
     it('ends with not_answered on busy before any action, with no update', async () => {

@@ -93,7 +93,6 @@ internal sealed class DetectTwilioRun : IDisposable
     private bool _hungUp;
     private bool _callOver;
     private string? _outcome;
-    private TimeSpan? _beepDue;
     private DetectionEvent? _lastVerdict;
     private DetectionEvent? _beep;
     private long? _latencyMs;
@@ -261,10 +260,8 @@ internal sealed class DetectTwilioRun : IDisposable
             _s.DetectionUrl,
             detectionKey,
             _s.PublicUrl + DetectionReceiver.DetectionPath,
-            _s.Strategy,
             _events.CallId,
-            _s.DetectionTimeoutSec,
-            _s.BeepWaitSeconds);
+            _s.WaitSeconds + 10);
         var options = new DetectionReceiverOptions(
             _s.Port, _s.PublicUrl, _s.AuthToken, detectionKey, Twiml.StartDetection(stream), _events, _out);
         _receiver = await DetectionReceiver.StartAsync(options, ct);
@@ -358,13 +355,6 @@ internal sealed class DetectTwilioRun : IDisposable
                 }
             }
 
-            if (!_acted && _beepDue is { } due && _clock.Elapsed >= due)
-            {
-                _out.WriteLine($"No beep within {_s.BeepWaitSeconds} seconds of the voicemail verdict. Playing the voicemail message anyway.");
-                await ActAsync(_s.Voicemail, "voicemail_no_beep", Stopwatch.GetTimestamp(), "the beep timer ran out", ct);
-                continue;
-            }
-
             var remaining = wait - _clock.Elapsed;
             if (remaining <= TimeSpan.Zero)
             {
@@ -372,19 +362,13 @@ internal sealed class DetectTwilioRun : IDisposable
                 return;
             }
 
-            var nap = remaining;
-            if (!_acted && _beepDue is { } next && next - _clock.Elapsed < nap)
-            {
-                nap = next - _clock.Elapsed;
-            }
-
             try
             {
-                await changed.WaitAsync(nap < TimeSpan.Zero ? TimeSpan.Zero : nap, ct);
+                await changed.WaitAsync(remaining, ct);
             }
             catch (TimeoutException)
             {
-                // Time to check the beep timer or the overall wait.
+                // The run limit: the next pass ends the wait.
             }
         }
     }
@@ -404,9 +388,7 @@ internal sealed class DetectTwilioRun : IDisposable
 
         if (_acted)
         {
-            _out.WriteLine(e.Name == "close"
-                ? $"Detection closed the stream (reason={Field(data, "reason") ?? "(none)"})."
-                : $"Detection event {Redact.Safe(e.Name, 40)} after the action: nothing more to do.");
+            _out.WriteLine($"Already acted on this call ({_outcome}), so no new action.");
             return;
         }
 
@@ -420,15 +402,10 @@ internal sealed class DetectTwilioRun : IDisposable
                 await OnVerdictAsync(e, data, ct);
                 break;
             case "timeout":
-                _out.WriteLine($"Detection gave no verdict within {_s.DetectionTimeoutSec} seconds. Hanging up.");
-                await ActAsync(null, "no_answer_detected", e.RecordedAt, "the timeout", ct);
-                break;
-            case "error" when Json.Bool(data, "recoverable") != true:
-                _out.WriteLine($"Detection error: code={Field(data, "code") ?? "(none)"} error={Field(data, "error") ?? "(none)"}. Not marked recoverable, so hanging up.");
-                await ActAsync(null, "detection_error", e.RecordedAt, "the error", ct);
+                _out.WriteLine("Detection reported a timeout. No action.");
                 break;
             case "error":
-                _out.WriteLine($"Detection error: code={Field(data, "code") ?? "(none)"} error={Field(data, "error") ?? "(none)"}. Recoverable, so no action.");
+                _out.WriteLine($"Detection error: code={Field(data, "code") ?? "(none)"} error={Field(data, "error") ?? "(none)"}. No action.");
                 break;
             case "screening":
                 _out.WriteLine($"Call screener: screening_type={Field(data, "screening_type") ?? "(none)"} "
@@ -446,37 +423,15 @@ internal sealed class DetectTwilioRun : IDisposable
     private async Task OnVerdictAsync(DetectionEvent e, JsonNode? data, CancellationToken ct)
     {
         var type = Json.String(data, "type");
-        var confidence = Json.Double(data, "confidence");
-        var shown = $"{Redact.Safe(type ?? "(none)", 40)} (confidence {Format(confidence)})";
-        var livePerson = type is not null && type.StartsWith(DetectTwilio.LivePersonPrefix, StringComparison.Ordinal);
-        switch (type)
+        var shown = $"{Redact.Safe(type ?? "(none)", 40)} (confidence {Format(Json.Double(data, "confidence"))})";
+        if (type is not null && type.StartsWith(DetectTwilio.LivePersonPrefix, StringComparison.Ordinal))
         {
-            case not null when livePerson && confidence >= _s.LiveConfidence:
-                _out.WriteLine($"Verdict: {shown}. Playing the live message.");
-                await ActAsync(_s.Live ?? _s.Voicemail, "live_person", e.RecordedAt, "the live person verdict", ct);
-                break;
-            case not null when livePerson:
-                _out.WriteLine($"Verdict: {shown}, below DC_LIVE_CONFIDENCE {Format(_s.LiveConfidence)}. Logged, not acted on.");
-                break;
-            case "speech.voicemail.greeting" when _beepDue is null:
-                _beepDue = _clock.Elapsed + TimeSpan.FromSeconds(_s.BeepWaitSeconds);
-                _out.WriteLine($"Verdict: {shown}. Waiting up to {_s.BeepWaitSeconds} seconds for the beep.");
-                break;
-            case "speech.voicemail.greeting":
-                _out.WriteLine($"Verdict: {shown}. Still waiting for the beep.");
-                break;
-            case "speech.voicemail.full" or "speech.voicemail.not_setup":
-                _out.WriteLine($"The mailbox cannot take a message ({type}), so the call is hung up.");
-                await ActAsync(null, "voicemail_unavailable", e.RecordedAt, "the mailbox verdict", ct);
-                break;
-            case "speech.silence":
-                _out.WriteLine($"Verdict: {shown}. Hanging up.");
-                await ActAsync(null, "no_answer_detected", e.RecordedAt, "the silence verdict", ct);
-                break;
-            default:
-                _out.WriteLine($"Verdict: {shown}. No action.");
-                break;
+            _out.WriteLine($"Verdict: {shown}. Playing the live message.");
+            await ActAsync(_s.Live ?? _s.Voicemail, "live_person", e.RecordedAt, "the live person verdict", ct);
+            return;
         }
+
+        _out.WriteLine($"Verdict: {shown}. No action.");
     }
 
     private void OnStatus(TwilioStatusEvent status)
@@ -505,19 +460,16 @@ internal sealed class DetectTwilioRun : IDisposable
         }
     }
 
-    // One update to the live call: play or speak a message, or hang up (message null).
-    private async Task ActAsync(VoiceMessage? message, string outcome, long triggeredAt, string trigger, CancellationToken ct)
+    // The one update to the live call: play or speak a message.
+    private async Task ActAsync(VoiceMessage message, string outcome, long triggeredAt, string trigger, CancellationToken ct)
     {
         _acted = true;
         _outcome = outcome;
-        var form = message is null
-            ? new[] { new KeyValuePair<string, string>("Status", "completed") }
-            : new[] { new KeyValuePair<string, string>("Twiml", Twiml.PlayMessage(message)) };
+        var form = new[] { new KeyValuePair<string, string>("Twiml", Twiml.PlayMessage(message)) };
         try
         {
             await _twilio.PostFormAsync(CallPath, form, ct);
             _latencyMs = (long)Stopwatch.GetElapsedTime(triggeredAt).TotalMilliseconds;
-            _hungUp = message is null;
             _out.WriteLine($"Twilio accepted the update {_latencyMs} ms after {trigger} was recorded.");
         }
         catch (TwilioError ex) when (ex.CallAlreadyEnded)
@@ -580,7 +532,7 @@ internal sealed class DetectTwilioRun : IDisposable
         _out.WriteLine($"  CallDuration:       {Redact.Safe(_duration ?? "(none)", 20)}");
         _out.WriteLine($"  CallSid:            {Redact.Safe(_callSid, 60)}");
         _out.WriteLine($"  call_id:            {_events.CallId}");
-        _out.WriteLine($"  Detection webhooks: {counts.Received} received, {counts.Duplicates} duplicates, {counts.Ignored} ignored");
+        _out.WriteLine($"  Detection webhooks: {counts.Received} received, {counts.Ignored} ignored");
     }
 
     // Step 11. Runs on success, on any error and on Ctrl-C. Each step runs even when an

@@ -12,8 +12,8 @@
 //   4. Start the receiver and check the tunnel in DC_PUBLIC_URL reaches it.
 //   5. Create the call. When it is answered, Twilio fetches TwiML that forks
 //      the audio to Detection with <Start><Stream>.
-//   6. Act on what the receiver records, once: on the beep (or a live person)
-//      replace the call's TwiML with your message.
+//   6. Act on what the receiver records, once: on the beep, or when a live
+//      person speaks, replace the call's TwiML with your message. Nothing else.
 //   7. Print a summary. Then hang up a call that is still up, delete the
 //      temporary key and close the receiver, also after an error or Ctrl+C.
 
@@ -49,7 +49,7 @@ class StoppedError extends RecipeError {
 //   fetchFn      fetch for the tunnel health check
 //   healthUrl    function (port) => URL for the health check (default DC_PUBLIC_URL/health)
 //   signals      where SIGINT and SIGTERM arrive (default process)
-//   msPerSecond  how long a second of DC_BEEP_WAIT_SECONDS and DC_WAIT_SECONDS is
+//   msPerSecond  how long a second of DC_WAIT_SECONDS is
 async function run({ env = process.env, out = console, client = null, fetchFn = fetch, healthUrl = null, signals = process, msPerSecond = 1000 } = {}) {
     printConsentLine(out);
     out.log(BILLING_LINE);
@@ -70,7 +70,7 @@ async function run({ env = process.env, out = console, client = null, fetchFn = 
         receiver: null,
         callSid: null,
         hungUp: false,
-        decision: new CallDecision({ liveConfidence: settings.liveConfidence }),
+        decision: new CallDecision(),
         latencyMs: null
     };
     if (settings.detectionKey === null) {
@@ -134,10 +134,8 @@ async function placeAndWatch({ ctx, fetchFn, healthUrl }) {
             detectionUrl: settings.detectionUrl,
             detectionKey,
             publicUrl: settings.publicUrl,
-            strategy: settings.strategy,
             callId: ctx.callId,
-            detectionTimeoutSec: settings.detectionTimeoutSec,
-            beepWaitSeconds: settings.beepWaitSeconds
+            waitSeconds: settings.waitSeconds
         }),
         log: out.log
     });
@@ -230,9 +228,8 @@ function callForm(settings) {
 // on the receiver between events, so nothing polls and nothing is left
 // running when it returns.
 async function watchCall({ ctx, deadline }) {
-    const { settings, out, stop, decision, receiver } = ctx;
+    const { out, stop, decision, receiver } = ctx;
     let cursor = 0;
-    let beepDeadline = null;
 
     while (!decision.finished) {
         stop.check();
@@ -245,10 +242,6 @@ async function watchCall({ ctx, deadline }) {
             }
             const step = entry.kind === 'status' ? decision.onStatus(entry) : decision.onDetection(entry.body);
             printLines(out, step.lines);
-            if (step.startBeepTimer) {
-                beepDeadline = Date.now() + settings.beepWaitSeconds * ctx.msPerSecond;
-                out.log('Voicemail detected. Waiting up to ' + settings.beepWaitSeconds + ' seconds for the beep.');
-            }
             if (step.action !== null) {
                 await perform({ ctx, action: step.action, triggeredAt: entry.received_at, trigger: entry.body ? entry.body.event : 'status' });
             }
@@ -256,15 +249,6 @@ async function watchCall({ ctx, deadline }) {
         }
 
         const now = Date.now();
-        if (beepDeadline !== null && now >= beepDeadline) {
-            beepDeadline = null;
-            const step = decision.onBeepTimeout();
-            printLines(out, step.lines);
-            if (step.action !== null) {
-                await perform({ ctx, action: step.action, triggeredAt: now, trigger: 'beep timer' });
-            }
-            continue;
-        }
         if (now >= deadline) {
             if (!decision.acted) {
                 out.log(NO_RESULT_HINT);
@@ -280,8 +264,7 @@ async function watchCall({ ctx, deadline }) {
             }
             return;
         }
-        const wakeAt = beepDeadline === null ? deadline : Math.min(beepDeadline, deadline);
-        await receiver.waitForEntry(cursor, wakeAt - now, stop.signal);
+        await receiver.waitForEntry(cursor, deadline - now, stop.signal);
     }
 }
 
@@ -330,7 +313,7 @@ function summarize(ctx) {
     out.log('  CallStatus:         ' + (decision.callStatus === null ? 'none' : printable(decision.callStatus)) + (decision.callDuration === null ? '' : ' (CallDuration ' + printable(decision.callDuration) + ')'));
     out.log('  CallSid:            ' + ctx.callSid);
     out.log('  call_id:            ' + ctx.callId);
-    out.log('  Detection webhooks: ' + counts.received + ' received, ' + counts.duplicates + ' duplicates, ' + counts.ignored + ' ignored');
+    out.log('  Detection webhooks: ' + counts.received + ' received, ' + counts.ignored + ' ignored');
     return {
         outcome: decision.outcome,
         lastVerdict: verdict,

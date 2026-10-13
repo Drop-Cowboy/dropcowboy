@@ -31,6 +31,7 @@ examples/api/
   node/                     Node 20+, ESM, Express 4, node:test, no TypeScript
   python/                   Python 3.9+, Flask 3, requests, pytest
   csharp/                   .NET 8, ASP.NET Core minimal API, xUnit
+  twilio-functions/         Detection as two Twilio Functions, Node 20+ (see below)
 ```
 
 Each language project has the same parts:
@@ -370,6 +371,9 @@ the live call with Twilio's REST API when the beep arrives (or a live person
 answers). Twilio is called over plain HTTPS like the Drop Cowboy API: no Twilio SDK,
 no Drop Cowboy SDK.
 
+It is a basic working example, deliberately small: it plays one message on the beep or
+on a live-person verdict, and does nothing else. It is not a delivery pipeline.
+
 It runs its own receiver (four routes below) and never sends ringless voicemail, so
 it does not use the `/callbacks/dropcowboy` or `/webhooks/dropcowboy` routes.
 
@@ -394,10 +398,6 @@ after the consent line.
 | `DC_VM_AUDIO_URL` | One of | Public `https://` MP3 or WAV that Twilio plays on the beep (`<Play>`) |
 | `DC_VM_TEXT` | One of | Text Twilio speaks on the beep (`<Say>`) when `DC_VM_AUDIO_URL` is unset. 1,000 characters or fewer |
 | `DC_LIVE_AUDIO_URL`, `DC_LIVE_TEXT` | No | Message for a live person, same rules. When both are unset the live person hears the voicemail message |
-| `DC_DETECTION_STRATEGY` | No | `standard` (default), `beep_only` or `live_check` |
-| `DC_DETECTION_TIMEOUT_SEC` | No | Integer 5 to 120, default `45` |
-| `DC_LIVE_CONFIDENCE` | No | Number from 0 to 1, default `0.6`. A live-person verdict (`speech.human.*`) below it is logged and not acted on. Keep it at `0.6` or lower: a short "hello" followed by a pause arrives as an early live-person verdict at `0.6` |
-| `DC_BEEP_WAIT_SECONDS` | No | Integer 1 to 60, default `20`. After a `speech.voicemail.greeting` verdict, how long to wait for the beep before playing anyway |
 | `DC_RING_SECONDS` | No | Integer 5 to 60, default `30`. Twilio's `Timeout` for the call |
 | `DC_WAIT_SECONDS` | No | Integer 60 to 600, default `180`. The whole run, from creating the call to the end. `0` is refused: this recipe has to listen |
 | `PORT` | No | Receiver port, default `3000` |
@@ -410,7 +410,7 @@ Validate everything before the first request, in this order, and print every
 problem found, not just the first: required settings, E.164 shape of `DC_TO` and
 `TWILIO_FROM` (`+` then 8 to 15 digits), `TWILIO_ACCOUNT_SID` shape (`AC` plus 32
 hex), `DC_PUBLIC_URL`, the audio URLs (`https://`, path ends in `.mp3` or `.wav`,
-case-insensitive), the numeric ranges, the strategy (exact, lowercase). The
+case-insensitive), the numeric ranges. The
 sample-value check over every `DC_` setting and `TWILIO_FROM`, and the refusal of a
 `TWILIO_ACCOUNT_SID` made only of zeros after `AC`
 (`TWILIO_ACCOUNT_SID=<value>: this is the placeholder from our fixtures; use your own.`),
@@ -443,12 +443,10 @@ Twilio or Drop Cowboy; the recipe acts on what they recorded.
       <Parameter name="api_key" value="{detection key}"/>
       <Parameter name="webhook_url" value="{DC_PUBLIC_URL}/webhooks/detection"/>
       <Parameter name="webhook_events" value="detection,beep,screening,timeout,error,close"/>
-      <Parameter name="strategy" value="{DC_DETECTION_STRATEGY}"/>
       <Parameter name="call_id" value="{run call_id}"/>
-      <Parameter name="detection_timeout_sec" value="{DC_DETECTION_TIMEOUT_SEC}"/>
     </Stream>
   </Start>
-  <Pause length="{DC_DETECTION_TIMEOUT_SEC + DC_BEEP_WAIT_SECONDS + 10}"/>
+  <Pause length="{DC_WAIT_SECONDS + 10}"/>
   <Hangup/>
 </Response>
 ```
@@ -471,9 +469,7 @@ Twilio or Drop Cowboy; the recipe acts on what they recorded.
   `stale_timestamp`, `invalid_signature` (same rules as the other webhook route:
   non-numeric timestamp is `stale_timestamp`, a header without the `v1=hmac-sha256`
   scheme is `invalid_signature`), `400` body is not a JSON object,
-  `200 {"received": true}`, and `200 {"received": true, "duplicate": true}` for a
-  repeated `delivery_id` (fall back to `X-Delivery-Id`). Detection retries a delivery
-  with the same id, so dedupe is required.
+  and `200 {"received": true}`. The receiver does not deduplicate.
 - Record every accepted event. A `call_id` other than this run's is recorded as
   ignored and logged, never acted on.
 
@@ -535,27 +531,12 @@ contributes each value, in the order received.
    `speech.voicemail.full`, `speech.voicemail.not_setup`, `speech.silence`,
    `speech.ivr`, `speech.screening`, `speech.carrier.intercept`, `speech.unknown`.
    Match live person on the `speech.human.` prefix, so a future subtype still counts.
-   Match the voicemail and silence values exactly.
    - `beep` -> play the voicemail message. Outcome `voicemail_on_beep`. A beep counts
      whether or not a voicemail verdict came first.
-   - `detection` whose `type` starts with `speech.human.` and
-     `confidence >= DC_LIVE_CONFIDENCE` -> play the live message. Outcome `live_person`.
-   - `detection` with `type: "speech.voicemail.greeting"` -> print it and start the beep
-     timer (`DC_BEEP_WAIT_SECONDS`), once. A later verdict does not restart it. If it
-     runs out with no beep, play the voicemail message anyway. Outcome
-     `voicemail_no_beep`.
-   - `detection` with `type: "speech.voicemail.full"` or `"speech.voicemail.not_setup"`
-     -> hang up: the mailbox cannot take a message. Outcome `voicemail_unavailable`
-     (print the type).
-   - `detection` with `type: "speech.silence"`, `timeout`, or `error` without
-     `recoverable: true` (false or missing) -> hang up. Outcome `no_answer_detected`
-     (`speech.silence`, `timeout`) or `detection_error` (print `code` and `error`).
-   - `screening` -> print `screening_type`, `suggested_action` and `suggested_dtmf`. No
-     action.
-   - `error` with `recoverable: true`, and any other `detection` (`speech.ivr`,
-     `speech.screening`, `speech.carrier.intercept`, `speech.unknown`, a live-person
-     verdict below the threshold, or a value not listed here) -> print, no action.
-   - `close` before any action -> print `reason`; keep waiting for Twilio's status.
+   - `detection` whose `type` starts with `speech.human.` -> play the live message,
+     whatever the `confidence`. Outcome `live_person`.
+   - Every other event (`screening`, `timeout`, `error`, `close`, and any other
+     `detection` type) -> print it, no action.
    - Twilio status `busy`, `no-answer`, `failed` or `canceled` before any action ->
      outcome `not_answered` with that status, no Twilio request.
    - Twilio status `completed` before any action -> outcome `ended_before_action`.
@@ -578,8 +559,8 @@ contributes each value, in the order received.
 10. Summary, one line each: `outcome`, the last verdict (`type`, `confidence`), beep
     `timestamp_ms` and `duration_ms` when one arrived, the update latency, final
     `CallStatus` and `CallDuration`, the `CallSid`, the `call_id`, and the number of
-    Detection webhooks received, duplicates and ignored. `received` counts every
-    signed, non-duplicate delivery, including the ignored ones; `ignored` is the part
+    Detection webhooks received and ignored. `received` counts every
+    signed delivery, including the ignored ones; `ignored` is the part
     of `received` for another `call_id`.
 11. `finally`, also on Ctrl+C and on any error after step 6: if the call has no terminal
     status, hang it up (`Status=completed`; a `404` or `21220` is fine). Then delete the
@@ -639,22 +620,44 @@ configured `DC_PUBLIC_URL` for signing exactly as in production. Cover:
   `MachineDetection`.
 - `/twilio/voice`: the exact TwiML for audio and for text, XML escaping, `403` on a bad
   signature and on another `CallSid`.
-- `/webhooks/detection`: every status code above and dedupe on `delivery_id`.
+- `/webhooks/detection`: every status code above.
 - Decisions: beep plays the voicemail message (exact `Twiml`); `speech.human.unknown`
-  at and above the threshold plays the live message, below it does nothing, and the
-  default threshold acts on a `0.6` verdict; another `speech.human.` subtype also plays
+  plays the live message at any confidence; another `speech.human.` subtype also plays
   the live message; the bare word `live_person` is not acted on; the live message
-  falls back to the voicemail message; `speech.voicemail.greeting` then no beep plays
-  after the timer; `speech.voicemail.greeting` then beep plays on the beep;
-  `speech.voicemail.full` and `speech.voicemail.not_setup` hang up with
-  `voicemail_unavailable`; `speech.ivr` does nothing; `speech.silence` and timeout hang up; a
-  non-recoverable error hangs up; a recoverable one does not; only one action per call
-  when events race; another `call_id` is ignored; `busy` before answer ends with no
-  update.
+  falls back to the voicemail message; a voicemail verdict with no beep does nothing and
+  the run ends with `no_result`; `speech.voicemail.greeting` then beep plays on the
+  beep; `speech.voicemail.full`, `speech.silence`, a timeout and an error do not hang
+  up; `speech.ivr` does nothing; only one action per call when events race; another
+  `call_id` is ignored; `busy` before answer ends with no update.
 - `finally` hangs up a call that is still up and skips the hang-up after a terminal
   status; a `404` on the hang-up is not an error.
 - Neither `TWILIO_AUTH_TOKEN`, `DC_SECRET` nor the full Detection key appears in
   captured stdout or stderr, and the Account SID appears only as its last 4.
+
+## twilio-functions
+
+`twilio-functions/` is not one of the three language projects and has no Python or
+C# twin: Twilio Functions run only Node.js. It demonstrates receiving a Detection
+event and responding to it. It is a demonstration, not a delivery pipeline.
+
+- Two Functions, `functions/detection-voice.protected.js` (TwiML that forks the call
+  to Detection, protected so only Twilio runs it) and `functions/detection-webhook.js`
+  (public, receives the Detection webhooks).
+- Settings: `DC_DETECTION_KEY`, `DC_DETECTION_WEBHOOK_TOKEN` (24 or more characters),
+  and `DC_VM_AUDIO_URL` or `DC_VM_TEXT`. It sets no strategy, timeout, threshold or
+  endpoint, so Detection's defaults apply.
+- A Function cannot read the raw request body, so it cannot check `X-Signature`. The
+  webhook address carries `?token=` instead, compared in constant time, and an event
+  for another `twilio_account_sid` is refused. The README states this plainly.
+- `onEvent` runs for every delivery. Its only default behavior is to leave the
+  message on `beep`: stop the stream, play or say the message, hang up. What an
+  event means and how to build a robust flow on it is left to the reader, and the
+  README says so.
+- Status codes: `401` wrong token, `403` another account, `400` no `event`, `500`
+  bad settings or a thrown error (Detection retries it), `200` otherwise.
+- Neither the token nor the Detection key is ever logged.
+- Tests (`npm test`) load the Functions with the `Twilio` global and a fake client, so
+  they use no network and no credentials.
 
 ## Test requirements (all languages)
 

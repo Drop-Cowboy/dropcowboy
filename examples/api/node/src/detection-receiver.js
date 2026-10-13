@@ -7,7 +7,7 @@
 //   POST /webhooks/detection  Detection posts its events. Signed with your Detection key
 //   POST /twilio/status       Twilio reports the call status. Signed with your auth token
 //
-// Each handler verifies, deduplicates, records and answers. None of them calls
+// Each handler verifies, records and answers. None of them calls
 // Twilio or Drop Cowboy: the recipe acts on what was recorded, so a slow
 // request never holds up an answer.
 
@@ -26,9 +26,8 @@ const HOST = '127.0.0.1';
 function createDetectionReceiver({ publicUrl, authToken, detectionKey, callId, twiml, log = console.log, nowMs = Date.now }) {
     const entries = [];
     const waiters = new Set();
-    const seenDeliveryIds = new Set();
     const pendingStatuses = [];
-    const counts = { received: 0, duplicates: 0, ignored: 0 };
+    const counts = { received: 0, ignored: 0 };
     let callSid = null;
 
     function record(entry) {
@@ -155,29 +154,15 @@ function createDetectionReceiver({ publicUrl, authToken, detectionKey, callId, t
             return;
         }
 
-        // Detection retries a delivery with the same id. This Set lives only
-        // as long as the process; in production use a unique index in your
-        // database.
-        const deliveryId = deliveryIdOf(body, req.headers);
-        if (deliveryId !== null) {
-            if (seenDeliveryIds.has(deliveryId)) {
-                counts.duplicates++;
-                log('Detection duplicate delivery_id ' + printable(deliveryId) + ' ignored');
-                res.status(200).json({ received: true, duplicate: true });
-                return;
-            }
-            seenDeliveryIds.add(deliveryId);
-        }
-
         counts.received++;
         if (body.call_id !== callId) {
             counts.ignored++;
             log('Detection event ' + printable(body.event) + ' for another call_id ' + printable(body.call_id) + ' ignored');
-            record({ kind: 'detection', ignored: true, delivery_id: deliveryId, body, received_at: Date.now() });
+            record({ kind: 'detection', ignored: true, body, received_at: Date.now() });
             res.status(200).json({ received: true });
             return;
         }
-        record({ kind: 'detection', ignored: false, delivery_id: deliveryId, body, received_at: Date.now() });
+        record({ kind: 'detection', ignored: false, body, received_at: Date.now() });
         res.status(200).json({ received: true });
     }
 
@@ -207,7 +192,7 @@ function createDetectionReceiver({ publicUrl, authToken, detectionKey, callId, t
         entriesSince,
         waitForEntry,
         counts() {
-            return { received: counts.received, duplicates: counts.duplicates, ignored: counts.ignored };
+            return { received: counts.received, ignored: counts.ignored };
         }
     };
 }
@@ -239,15 +224,6 @@ async function startDetectionReceiver(options) {
 
 function rawBodyOf(req) {
     return Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
-}
-
-// The id in the body is the one to trust. X-Delivery-Id is a fallback.
-function deliveryIdOf(body, headers) {
-    if (typeof body.delivery_id === 'string' && body.delivery_id !== '') {
-        return body.delivery_id;
-    }
-    const header = headers['x-delivery-id'];
-    return typeof header === 'string' && header !== '' ? header : null;
 }
 
 export { HOST, createDetectionReceiver, startDetectionReceiver };

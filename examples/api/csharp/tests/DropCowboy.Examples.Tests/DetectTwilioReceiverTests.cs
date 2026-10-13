@@ -146,7 +146,7 @@ public sealed class DetectTwilioReceiverTests : IAsyncLifetime
     // ---- /webhooks/detection -----------------------------------------------------------
 
     [Fact]
-    public async Task DetectionAcceptsTheVectorThenFlagsTheRepeatAsDuplicate()
+    public async Task DetectionAcceptsTheVectorAndRecordsEachDelivery()
     {
         using var first = await PostDetectionAsync(RawBody, Signature, Timestamp);
         using var second = await PostDetectionAsync(RawBody, Signature, Timestamp);
@@ -154,12 +154,17 @@ public sealed class DetectTwilioReceiverTests : IAsyncLifetime
         Assert.Equal(200, (int)first.StatusCode);
         Assert.Equal("""{"received":true}""", await first.Content.ReadAsStringAsync());
         Assert.Equal(200, (int)second.StatusCode);
-        Assert.Equal("""{"received":true,"duplicate":true}""", await second.Content.ReadAsStringAsync());
+        Assert.Equal("""{"received":true}""", await second.Content.ReadAsStringAsync());
 
-        var recorded = Assert.IsType<DetectionEvent>(Assert.Single(_events.Since(0).Items));
-        Assert.Equal("beep", recorded.Name);
-        Assert.False(recorded.Ignored);
-        Assert.Equal(new CallEventCounts(1, 1, 0), _events.Counts);
+        var recorded = _events.Since(0).Items;
+        Assert.Equal(2, recorded.Count);
+        Assert.All(recorded, item =>
+        {
+            var detection = Assert.IsType<DetectionEvent>(item);
+            Assert.Equal("beep", detection.Name);
+            Assert.False(detection.Ignored);
+        });
+        Assert.Equal(new CallEventCounts(2, 0), _events.Counts);
     }
 
     [Fact]
@@ -216,25 +221,8 @@ public sealed class DetectTwilioReceiverTests : IAsyncLifetime
 
         Assert.Equal(200, (int)response.StatusCode);
         Assert.True(Assert.IsType<DetectionEvent>(Assert.Single(_events.Since(0).Items)).Ignored);
-        Assert.Equal(new CallEventCounts(1, 0, 1), _events.Counts);
+        Assert.Equal(new CallEventCounts(1, 1), _events.Counts);
         Assert.Contains("is not this run's call: ignored", _log.ToString());
-    }
-
-    [Fact]
-    public async Task DetectionDedupesOnTheDeliveryIdHeaderWhenTheBodyHasNone()
-    {
-        var body = JsonNode.Parse(RawBody)!.AsObject();
-        body.Remove("delivery_id");
-        var raw = body.ToJsonString();
-        var signature = DetectionSignature.Sign(Key, Timestamp, Encoding.UTF8.GetBytes(raw));
-        const string deliveryId = "5c1e8a3f-9b2d-4f7e-a6c4-3d8b1e9f2a70";
-
-        using var first = await PostDetectionAsync(raw, signature, Timestamp, deliveryId);
-        using var second = await PostDetectionAsync(raw, signature, Timestamp, deliveryId);
-
-        Assert.Equal("""{"received":true}""", await first.Content.ReadAsStringAsync());
-        Assert.Equal("""{"received":true,"duplicate":true}""", await second.Content.ReadAsStringAsync());
-        Assert.Equal(deliveryId, Assert.IsType<DetectionEvent>(Assert.Single(_events.Since(0).Items)).DeliveryId);
     }
 
     private static async Task AssertError(HttpResponseMessage response, int status, string code)
@@ -256,7 +244,7 @@ public sealed class DetectTwilioReceiverTests : IAsyncLifetime
         return await _http.SendAsync(message);
     }
 
-    private async Task<HttpResponseMessage> PostDetectionAsync(string raw, string? signature, string? timestamp, string? deliveryId = null)
+    private async Task<HttpResponseMessage> PostDetectionAsync(string raw, string? signature, string? timestamp)
     {
         using var message = new HttpRequestMessage(HttpMethod.Post, _url + DetectionReceiver.DetectionPath)
         {
@@ -270,11 +258,6 @@ public sealed class DetectTwilioReceiverTests : IAsyncLifetime
         if (timestamp is not null)
         {
             message.Headers.Add("X-Timestamp", timestamp);
-        }
-
-        if (deliveryId is not null)
-        {
-            message.Headers.Add("X-Delivery-Id", deliveryId);
         }
 
         return await _http.SendAsync(message);

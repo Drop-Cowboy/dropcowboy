@@ -101,6 +101,7 @@ messages and RCS, the richer kind of text with images and buttons.
 |---|---|
 | [`examples/api/quickstart`](examples/api/quickstart) | The one-file script above. |
 | [`examples/api`](examples/api) | The same examples in [Node.js](examples/api/node), [Python](examples/api/python) and [C#](examples/api/csharp): send a voicemail, receive the result, manage webhooks, and [detect voicemail on a call from your own Twilio account](examples/api/README.md#detect-voicemail-on-a-twilio-call). Each has tests that run without an account. |
+| [`examples/api/twilio-functions`](examples/api/twilio-functions) | Two [Twilio Functions](https://www.twilio.com/docs/serverless/functions-assets/functions) that receive Detection events and respond to them. Deploy them to your Twilio account with the Twilio CLI. |
 | [`docs`](docs) | Short explanations, fixes for common problems, and prompts for AI coding assistants. |
 | [`skills`](skills) | Instructions an AI assistant reads to add one Building Block to your app. |
 | [`legacy`](legacy) | The old v1 API. |

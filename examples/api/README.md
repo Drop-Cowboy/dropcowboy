@@ -20,6 +20,7 @@ in a few minutes. Come back here for the full recipes.
 | `node/` | Node.js 20.6 or newer, Express 4, built-in test runner. See [`node/README.md`](node/README.md). |
 | `python/` | Python 3.9 or newer, Flask 3, `requests`, pytest. See [`python/README.md`](python/README.md). |
 | `csharp/` | .NET 8, ASP.NET Core minimal API, xUnit. See [`csharp/README.md`](csharp/README.md). |
+| `twilio-functions/` | Two Twilio Functions you deploy to your own Twilio account: receive Detection events and respond to them. See [`twilio-functions/README.md`](twilio-functions/README.md). |
 | `fixtures/` | Language-neutral JSON used by every test suite: callback, webhook, Detection and Twilio bodies, and the signature test vectors. |
 | `CONTRACT.md` | The behavior all three projects share: environment variables, receiver routes, call sequences and test requirements. |
 
@@ -194,9 +195,8 @@ message when you set none. It sends no ringless voicemail.
   `DC_VM_TEXT`, which Twilio speaks (1,000 characters or fewer). Optionally
   `DC_LIVE_AUDIO_URL` or `DC_LIVE_TEXT` for a live person.
 
-`CONTRACT.md` lists the optional settings: the detection strategy and timeout,
-the confidence a live-person verdict needs, how long to wait for a beep, how
-long the phone rings and how long the whole run lasts.
+`CONTRACT.md` lists the optional settings: how long the phone rings and how
+long the whole run lasts.
 
 The Detection key goes into the TwiML as the `api_key` stream parameter, so it
 shows in your Twilio Console request logs. Use a dedicated key and delete it
@@ -220,13 +220,11 @@ Detection webhooks are signed differently from the API webhooks above:
   webhook signing secret.
 - `X-Timestamp` is in milliseconds. The receiver rejects one more than 5
   minutes from now.
-- Detection retries a delivery with the same `delivery_id` (also sent as
-  `X-Delivery-Id`), so the receiver deduplicates on it.
 
-The recipe acts at most once per call. A beep plays the voicemail message. A
-live-person verdict at or above `DC_LIVE_CONFIDENCE` plays the live message. A
-voicemail verdict with no beep in time plays the voicemail message anyway. A
-silence verdict or a timeout hangs up. To play a message it updates the call
+This recipe is a basic working example, not a delivery pipeline. It does two
+things: a beep plays the voicemail message, and a live-person verdict
+(`speech.human.*`) plays the live message. It acts at most once per call and
+prints every other event without acting on it. To play a message it updates the call
 with TwiML that first stops the stream (`<Stop><Stream name="detection"/></Stop>`),
 which ends the Detection session. At the end it prints a summary: the outcome,
 the last verdict, the beep timing, how long Twilio took to accept the update,
@@ -245,6 +243,18 @@ Each language README has the setup and the full list of settings:
 The tests use a mock Twilio and a mock API, so they spend nothing. The
 signature vectors are in `fixtures/detection-signature-vectors.json` and
 `fixtures/twilio-signature-vectors.json`.
+
+### Or run it inside Twilio
+
+The recipe runs on your computer and needs a tunnel. To see how to receive Detection
+events inside Twilio with nothing to host, deploy
+[`twilio-functions/`](twilio-functions/README.md) to your Twilio account with the
+Twilio CLI. It has two Twilio Functions: one returns the TwiML that forks the call
+to Detection, and one receives every event and runs an `onEvent` function that you
+edit. It is a demonstration of receiving an event and responding to it, and what
+you build on top is up to you. A Function cannot read the raw body, so it checks a
+secret token in the webhook address rather than the signature; the README explains
+why.
 
 ## Compliance
 

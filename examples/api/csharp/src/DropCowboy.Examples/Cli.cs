@@ -26,7 +26,8 @@ public static class Cli
           check-receiver   Post a sample callback and a signed sample webhook to your endpoints:
                            check-receiver <callback-url> [webhook-url]
           detect-twilio    Call DC_TO through your own Twilio account, listen with Detection,
-                           and play a message on the beep. Places a real, billed call
+                           and play your message on the beep or to a live person.
+                           Places a real, billed call
 
         Settings come from environment variables. See README.md.
         """;

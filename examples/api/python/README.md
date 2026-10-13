@@ -209,9 +209,9 @@ This places a real phone call. Twilio bills the call and Drop Cowboy bills the D
 
 This recipe sends no ringless voicemail. It dials `DC_TO` from `TWILIO_FROM` through your own
 Twilio account and streams the call audio to Detection, which tells the recipe what answered.
-When the voicemail greeting ends with its beep, or a live person answers, the recipe redirects
-the live call to play your message, then hangs up. Twilio is called over plain HTTPS with
-`requests`, like the Drop Cowboy API. No Twilio SDK.
+It plays your message on the beep, or the live message when a live person is detected, and does
+nothing else: the recipe redirects the live call to play the message, then hangs up. Twilio is
+called over plain HTTPS with `requests`, like the Drop Cowboy API. No Twilio SDK.
 
 What it does, in order:
 
@@ -228,16 +228,12 @@ What it does, in order:
 6. Acts once, on the first of these:
    - `beep`: plays the voicemail message.
    - a live-person verdict (any `type` starting with `speech.human.`, such as
-     `speech.human.unknown`) at or above `DC_LIVE_CONFIDENCE`: plays the live message.
-   - a `speech.voicemail.greeting` verdict: waits up to `DC_BEEP_WAIT_SECONDS` for the beep,
-     then plays the voicemail message anyway.
-   - a `speech.voicemail.full` or `speech.voicemail.not_setup` verdict: hangs up, because the
-     mailbox cannot take a message.
-   - `speech.silence`, `timeout`, or an `error` that is not recoverable: hangs up.
+     `speech.human.unknown`), at any confidence: plays the live message.
    - `busy`, `no-answer`, `failed` or `canceled` from Twilio: nothing to do.
 
-   Any other verdict (`speech.ivr`, `speech.screening`, `speech.carrier.intercept`,
-   `speech.unknown`) is printed and not acted on.
+   Every other event or verdict (a voicemail greeting, `speech.voicemail.full`, `speech.silence`,
+   `speech.ivr`, `timeout`, `error`, `close`) is printed and not acted on. If nothing to act on
+   arrives before `DC_WAIT_SECONDS` ends, the recipe hangs up.
 7. Prints a summary, then hangs up a call that is still up, deletes the temporary key and stops
    the receiver. That last step runs on success, on an error and on Ctrl+C.
 
@@ -263,10 +259,6 @@ at the end. A temporary key also expires on its own after an hour.
 | `DC_VM_AUDIO_URL` | One of | A public `https://` `.mp3` or `.wav` played on the beep. |
 | `DC_VM_TEXT` | One of | Text spoken on the beep when `DC_VM_AUDIO_URL` is unset. 1,000 characters or fewer. |
 | `DC_LIVE_AUDIO_URL`, `DC_LIVE_TEXT` | No | The message for a live person, same rules. With neither, a live person hears the voicemail message. |
-| `DC_DETECTION_STRATEGY` | No | `standard` (default), `beep_only` or `live_check`, exactly, in lowercase. |
-| `DC_DETECTION_TIMEOUT_SEC` | No | 5 to 120, default 45. How long Detection listens. |
-| `DC_LIVE_CONFIDENCE` | No | 0 to 1, default 0.6. A live-person verdict (`speech.human.*`) below it is printed and not acted on. Keep it at 0.6 or lower: a short "hello" followed by a pause arrives as an early live-person verdict at 0.6. |
-| `DC_BEEP_WAIT_SECONDS` | No | 1 to 60, default 20. After a `speech.voicemail.greeting` verdict, how long to wait for the beep. |
 | `DC_RING_SECONDS` | No | 5 to 60, default 30. How long Twilio lets the phone ring. |
 | `DC_WAIT_SECONDS` | No | 60 to 600, default 180. The whole run, from creating the call to the end. `0` is refused here: this recipe has to listen. |
 | `PORT` | No | The receiver port, default 3000. |
@@ -291,7 +283,7 @@ Use the base address only. The recipe adds the paths itself, and its receiver ha
 - `POST /webhooks/detection`: Detection's events for this call. Signed with the Detection key.
 - `POST /twilio/status`: Twilio's status callback. Signed by Twilio.
 
-The routes only verify, dedupe, record and answer. The recipe reads what they recorded and makes
+The routes only verify, record and answer. The recipe reads what they recorded and makes
 the one Twilio request itself. Both signatures are checked against `DC_PUBLIC_URL`, not the address
 the request arrived at, because a tunnel changes that. A Detection event carries the run's
 `call_id`, and an event for any other `call_id` is ignored.
@@ -308,8 +300,7 @@ The tunnel reaches this receiver.
 Calling +13125550142 from +13125550147...
 Call created. CallSid: CA00000000000000000000000000000001
 Twilio asked for the TwiML. Streaming the call audio to Detection.
-Detection: speech.voicemail.greeting (confidence 0.91)
-Waiting up to 20 seconds for the beep.
+Detection: speech.voicemail.greeting (confidence 0.91): no action.
 Beep: timestamp_ms=6420 duration_ms=380
 Playing the voicemail message.
 Twilio answered the update 212 ms after the receiver recorded the beep.
@@ -319,9 +310,8 @@ Summary:
   ...
 ```
 
-The summary's `outcome` is one of `voicemail_on_beep`, `voicemail_no_beep`, `live_person`,
-`voicemail_unavailable`, `no_answer_detected`, `detection_error`, `not_answered` (with Twilio's status),
-`ended_before_action` or `no_result`.
+The summary's `outcome` is one of `voicemail_on_beep`, `live_person`, `not_answered` (with
+Twilio's status), `ended_before_action` or `no_result`.
 
 It exits 0 for any outcome in the summary, 1 for a setup problem, a failed check, a request
 error or a clean-up step that failed (even after a good outcome, so a key left behind is never

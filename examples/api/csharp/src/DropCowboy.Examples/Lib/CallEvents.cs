@@ -6,7 +6,7 @@ namespace DropCowboy.Examples.Lib;
 public abstract record CallEvent(long RecordedAt);
 
 /// <summary>A verified Detection webhook. Ignored means its call_id is not this run's.</summary>
-public sealed record DetectionEvent(string Name, string? DeliveryId, string? CallId, bool Ignored, JsonObject Body, long RecordedAt)
+public sealed record DetectionEvent(string Name, string? CallId, bool Ignored, JsonObject Body, long RecordedAt)
     : CallEvent(RecordedAt)
 {
     public JsonNode? Data => Json.Get(Body, "data");
@@ -16,7 +16,7 @@ public sealed record DetectionEvent(string Name, string? DeliveryId, string? Cal
 public sealed record TwilioStatusEvent(string CallSid, string Status, string? Duration, long RecordedAt)
     : CallEvent(RecordedAt);
 
-public sealed record CallEventCounts(int Received, int Duplicates, int Ignored);
+public sealed record CallEventCounts(int Received, int Ignored);
 
 /// <summary>
 /// The in-process, ordered record of one detect-twilio run: Detection webhooks and Twilio
@@ -28,13 +28,9 @@ public sealed class CallEvents(string callId)
     private readonly object _gate = new();
     private readonly List<CallEvent> _items = [];
 
-    // Delivery ids already handled. Detection retries a delivery with the same id. In
-    // production keep these in a database table with a unique index.
-    private readonly HashSet<string> _deliveryIds = [];
     private TaskCompletionSource _changed = NewSignal();
     private string? _callSid;
     private int _received;
-    private int _duplicates;
     private int _ignored;
 
     /// <summary>The run's own call_id, sent to Detection as a stream parameter and echoed on every event.</summary>
@@ -66,27 +62,12 @@ public sealed class CallEvents(string callId)
         {
             lock (_gate)
             {
-                return new CallEventCounts(_received, _duplicates, _ignored);
+                return new CallEventCounts(_received, _ignored);
             }
         }
     }
 
     public bool IsThisCall(string? callSid) => callSid is not null && callSid == CallSid;
-
-    /// <summary>True the first time a delivery id is seen. A repeat counts as a duplicate.</summary>
-    public bool FirstDelivery(string deliveryId)
-    {
-        lock (_gate)
-        {
-            if (_deliveryIds.Add(deliveryId))
-            {
-                return true;
-            }
-
-            _duplicates++;
-            return false;
-        }
-    }
 
     public void Add(CallEvent item)
     {

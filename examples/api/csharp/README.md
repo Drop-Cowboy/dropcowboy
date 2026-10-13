@@ -8,7 +8,7 @@ ASP.NET Core minimal APIs, `HttpClient` and `System.Text.Json`. The app has no
 NuGet packages and no SDK.
 
 A fifth recipe, `detect-twilio`, places a call through your own Twilio account and
-uses Detection to play your message on the voicemail beep. See
+uses Detection to play your message on the voicemail beep, or to a live person. See
 [Detection with Twilio](#detection-with-twilio).
 
 New to the API? Start with the [quickstart](../quickstart/), then come back here.
@@ -223,7 +223,7 @@ This places a real phone call. Twilio bills the call and Drop Cowboy bills the D
 dotnet run -- detect-twilio
 ```
 
-The recipe calls `DC_TO` from `TWILIO_FROM` with your own Twilio account. When the call is answered, Twilio sends a copy of the call audio to Detection with `<Start><Stream>`. Detection posts what it hears (a voicemail, the beep, a live person) to the receiver as signed webhooks, and the recipe updates the live call with Twilio's REST API: on the beep it plays your voicemail message, and to a live person it plays your live message. It sends no ringless voicemail. Twilio is called over plain HTTPS with `HttpClient`, like the Drop Cowboy API: there is no Twilio SDK.
+The recipe calls `DC_TO` from `TWILIO_FROM` with your own Twilio account. When the call is answered, Twilio sends a copy of the call audio to Detection with `<Start><Stream>`. Detection posts what it hears (a voicemail, the beep, a live person) to the receiver as signed webhooks, and the recipe updates the live call with Twilio's REST API. It plays your voicemail message on the beep, or your live message when a live person is detected, and nothing else: every other verdict is printed and ignored. It sends no ringless voicemail. Twilio is called over plain HTTPS with `HttpClient`, like the Drop Cowboy API: there is no Twilio SDK.
 
 It acts at most once per call. In order:
 
@@ -231,7 +231,7 @@ It acts at most once per call. In order:
 2. Uses `DC_DETECTION_KEY`, or creates a temporary Detection key with `DC_KEY` and `DC_SECRET` (that API key needs `balance:read` to list Detection keys and `account:write` to create and delete them). A temporary key expires in one hour, and the recipe deletes it at the end. It also deletes one left over by an earlier run.
 3. Checks the Twilio account is active and not a trial, and that `TWILIO_FROM` is a number in it or a verified caller ID on it.
 4. Starts the receiver and checks that `DC_PUBLIC_URL/health` reaches it through your tunnel.
-5. Creates the call. Waits for Detection, then plays the message or hangs up.
+5. Creates the call. Waits for Detection, then plays the message.
 6. Prints a summary. Then it hangs up a call that is still up, deletes the temporary key and stops the receiver. It does this after an error and after Ctrl-C too.
 
 **Twilio trial accounts are not supported.** A trial account plays a notice and waits for a key press before your TwiML runs, so Detection would hear the notice instead of the person. The recipe stops before the call. Upgrade the account to run it.
@@ -250,10 +250,6 @@ It acts at most once per call. In order:
 | `DC_VM_AUDIO_URL` | One of | An `https://` MP3 or WAV that plays on the beep. |
 | `DC_VM_TEXT` | One of | Text spoken on the beep when `DC_VM_AUDIO_URL` is unset. 1,000 characters or fewer. |
 | `DC_LIVE_AUDIO_URL`, `DC_LIVE_TEXT` | No | The message for a live person, same rules. Unset, a live person hears the voicemail message. |
-| `DC_DETECTION_STRATEGY` | No | `standard` (default), `beep_only` or `live_check`. |
-| `DC_DETECTION_TIMEOUT_SEC` | No | 5 to 120, default 45. How long Detection listens for a verdict. |
-| `DC_LIVE_CONFIDENCE` | No | 0 to 1, default 0.6. A live person verdict (`speech.human.*`) below it is printed and not acted on. Keep it at 0.6 or lower: a short "hello" followed by a pause arrives as an early live person verdict at 0.6. |
-| `DC_BEEP_WAIT_SECONDS` | No | 1 to 60, default 20. After a `speech.voicemail.greeting` verdict, how long to wait for the beep before playing anyway. |
 | `DC_RING_SECONDS` | No | 5 to 60, default 30. How long the phone rings. |
 | `DC_WAIT_SECONDS` | No | 60 to 600, default 180. The whole run. `0` is refused, because this recipe has to listen. |
 | `DC_DETECTION_URL` | No | Default `wss://detect.dropcowboy.com/carrier/ws/twilio`. |
@@ -300,12 +296,12 @@ Calling +13125550142 from +13125550147. CallSid: CA00000000000000000000000000000
 [twilio voice] call answered; sent the TwiML that starts Detection
 [twilio status] CallStatus=in-progress
 [detection webhook] event=detection
-Verdict: speech.voicemail.greeting (confidence 0.91). Waiting up to 20 seconds for the beep.
+Verdict: speech.voicemail.greeting (confidence 0.91). No action.
 [detection webhook] event=beep
 Beep at 6420 ms (duration 380 ms). Playing the voicemail message.
 Twilio accepted the update 212 ms after the beep was recorded.
 [detection webhook] event=close
-Detection closed the stream (reason=normal).
+Already acted on this call (voicemail_on_beep), so no new action.
 [twilio status] CallStatus=completed CallDuration=21
 The call ended: CallStatus=completed.
 Summary:
@@ -317,7 +313,7 @@ Summary:
   CallDuration:       21
   CallSid:            CA00000000000000000000000000000001
   call_id:            9b2d4f6a-8c1e-4a3b-9d5f-7e1a3c5b7d90
-  Detection webhooks: 3 received, 0 duplicates, 0 ignored
+  Detection webhooks: 3 received, 0 ignored
 Temporary Detection key deleted.
 ```
 
@@ -326,14 +322,10 @@ The outcome is one of:
 | Outcome | Meaning |
 |---|---|
 | `voicemail_on_beep` | The beep arrived and the voicemail message played. |
-| `voicemail_no_beep` | A `speech.voicemail.greeting` verdict, but no beep within `DC_BEEP_WAIT_SECONDS`, so the message played anyway. |
-| `live_person` | A live person verdict (`type` starting with `speech.human.`) at or above `DC_LIVE_CONFIDENCE`. The live message played. |
-| `voicemail_unavailable` | A `speech.voicemail.full` or `speech.voicemail.not_setup` verdict: the mailbox cannot take a message. The recipe hung up. |
-| `no_answer_detected` | A `speech.silence` verdict, or Detection reached its timeout. The recipe hung up. |
-| `detection_error` | Detection reported an error not marked `recoverable: true` (false or missing). The recipe hung up. |
+| `live_person` | A live person verdict (`type` starting with `speech.human.`), at any confidence. The live message played. |
 | `not_answered` | The call ended busy, unanswered, failed or canceled. |
 | `ended_before_action` | The call ended before anything was played. |
-| `no_result` | No Detection result within `DC_WAIT_SECONDS`. The recipe hung up and printed what to check. |
+| `no_result` | Nothing was played within `DC_WAIT_SECONDS`. The recipe hung up and printed what to check. |
 
 Every outcome exits with code 0. A settings, preflight or request error exits with code 1, and so does a cleanup step that fails (hanging up, deleting the temporary key or stopping the receiver), even after a good outcome. Ctrl-C exits with 130, after the cleanup. A Twilio error prints its status, code, message and link, with a `What to do:` line for codes `21210`, `21212`, `21215`, `21219` and `20003`. If Detection never posts a webhook, check that the key is active and that your balance covers Detection, and look for stream errors in the Twilio Console debugger. A key that is refused closes the stream before any webhook is sent.
 

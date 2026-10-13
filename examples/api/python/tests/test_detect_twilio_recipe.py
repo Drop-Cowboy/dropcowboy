@@ -145,7 +145,7 @@ def test_beep_plays_the_voicemail_message_with_the_exact_twiml():
     ]
     assert result.twilio.find("GET", ACCOUNT_PATH + "/IncomingPhoneNumbers.json")[0].query == {
         "PhoneNumber": TWILIO_FROM}
-    assert "Waiting up to 20 seconds for the beep." in result.lines
+    assert "Detection: speech.voicemail.greeting (confidence 0.91): no action." in result.lines
     assert "  outcome: voicemail_on_beep" in result.lines
     assert "  beep: timestamp_ms=6420 duration_ms=380" in result.lines
     assert "  CallStatus: completed" in result.lines
@@ -186,32 +186,24 @@ def test_the_calls_json_form_body_is_exact():
 
 
 def test_the_twiml_carries_this_runs_settings():
-    result = play_call(beep, env={"DC_DETECTION_STRATEGY": "beep_only", "DC_DETECTION_TIMEOUT_SEC": "30",
-                                  "DC_BEEP_WAIT_SECONDS": "15"})
+    result = play_call(beep, env={"DC_WAIT_SECONDS": "90"})
     twiml = result.player.voice_response.text
     assert '<Parameter name="api_key" value="' + DETECTION_KEY + '"/>' in twiml
-    assert '<Parameter name="strategy" value="beep_only"/>' in twiml
     assert '<Parameter name="call_id" value="' + result.player.call_id + '"/>' in twiml
-    assert '<Parameter name="detection_timeout_sec" value="30"/>' in twiml
-    assert '<Pause length="55"/>' in twiml
+    assert 'name="strategy"' not in twiml
+    assert 'name="detection_timeout_sec"' not in twiml
+    assert '<Pause length="100"/>' in twiml
 
 
-@pytest.mark.parametrize("threshold,confidence", [("0.7", 0.7), ("0.7", 0.88)])
-def test_a_live_person_at_or_above_the_threshold_plays_the_live_message(threshold, confidence):
+@pytest.mark.parametrize("confidence", [0.2, 0.6, 0.88])
+def test_a_live_person_at_any_confidence_plays_the_live_message(confidence):
     result = play_call(lambda p: p.detection("detection.live-person.json", data={"confidence": confidence}),
-                       env={"DC_LIVE_AUDIO_URL": LIVE_AUDIO_URL, "DC_LIVE_CONFIDENCE": threshold})
+                       env={"DC_LIVE_AUDIO_URL": LIVE_AUDIO_URL})
     assert_clean(result)
     assert result.updates() == [[("Twiml", play_twiml("Play", LIVE_AUDIO_URL))]]
+    assert "Detection: speech.human.unknown (confidence " + str(confidence) + ")" in result.lines
     assert "  outcome: live_person" in result.lines
     assert "  last verdict: speech.human.unknown (confidence " + str(confidence) + ")" in result.lines
-
-
-def test_the_default_threshold_acts_on_an_early_0_6_live_person_verdict():
-    result = play_call(lambda p: p.detection("detection.live-person.json"), env={"DC_LIVE_TEXT": "Hello there"})
-    assert_clean(result)
-    assert result.updates() == [[("Twiml", play_twiml("Say", "Hello there"))]]
-    assert "Detection: speech.human.unknown (confidence 0.6)" in result.lines
-    assert "  outcome: live_person" in result.lines
 
 
 def test_another_human_subtype_plays_the_live_message():
@@ -221,18 +213,6 @@ def test_another_human_subtype_plays_the_live_message():
     assert_clean(result)
     assert result.updates() == [[("Twiml", play_twiml("Say", "Hello there"))]]
     assert "  outcome: live_person" in result.lines
-
-
-def test_a_live_person_below_the_threshold_does_nothing():
-    def script(p):
-        p.detection("detection.live-person.json", data={"confidence": 0.5})
-        p.status("completed", "4")
-    result = play_call(script, env={"DC_LIVE_TEXT": "Hello there"})
-    assert_clean(result)
-    assert result.updates() == []
-    assert ("Detection: speech.human.unknown (confidence 0.5), below DC_LIVE_CONFIDENCE 0.6, not acted on."
-            in result.lines)
-    assert "  outcome: ended_before_action" in result.lines
 
 
 @pytest.mark.parametrize("verdict", ["live_person", "speech.ivr", "speech.screening", "speech.carrier.intercept",
@@ -259,61 +239,61 @@ def test_live_text_is_used_for_a_live_person():
     assert result.updates() == [[("Twiml", play_twiml("Say", "Hello there"))]]
 
 
-def test_a_voicemail_greeting_with_no_beep_plays_after_the_timer():
-    result = play_call(lambda p: p.detection("detection.voicemail.json"), changes={"beep_wait_seconds": 0.3})
-    assert_clean(result)
-    assert result.updates() == [[("Twiml", play_twiml("Play", VM_AUDIO_URL))]]
-    assert "Detection: speech.voicemail.greeting (confidence 0.91)" in result.lines
-    assert "Waiting up to 0.3 seconds for the beep." in result.lines
-    assert "No beep within 0.3 seconds. Playing the message anyway." in result.lines
-    assert "  outcome: voicemail_no_beep" in result.lines
+def test_a_voicemail_greeting_with_no_beep_does_nothing_and_ends_at_the_deadline():
+    result = play_call(lambda p: p.detection("detection.voicemail.json"), changes={"wait_seconds": 0.8},
+                       complete_on_update=False)
+    assert result.code == 0
+    assert "Detection: speech.voicemail.greeting (confidence 0.91): no action." in result.lines
+    assert NO_RESULT_MESSAGE in result.lines
+    assert NO_WEBHOOK_MESSAGE not in result.lines
+    assert result.updates() == [HANG_UP]
+    assert "  outcome: no_result" in result.lines
+    assert "  last verdict: speech.voicemail.greeting (confidence 0.91)" in result.lines
     assert "  beep: timestamp_ms=6420 duration_ms=380" not in result.lines
 
 
 def test_a_voicemail_greeting_then_a_beep_plays_on_the_beep():
-    result = play_call(beep, changes={"beep_wait_seconds": 30})
+    result = play_call(beep)
     assert_clean(result)
     assert result.updates() == [[("Twiml", play_twiml("Play", VM_AUDIO_URL))]]
     lines = result.lines
-    assert lines.index("Detection: speech.voicemail.greeting (confidence 0.91)") < lines.index(
+    assert lines.index("Detection: speech.voicemail.greeting (confidence 0.91): no action.") < lines.index(
         "Beep: timestamp_ms=6420 duration_ms=380")
-    assert not any(line.startswith("No beep within") for line in lines)
     assert "  outcome: voicemail_on_beep" in lines
 
 
-@pytest.mark.parametrize("verdict", ["speech.voicemail.full", "speech.voicemail.not_setup"])
-def test_a_mailbox_that_cannot_take_a_message_hangs_up(verdict):
-    result = play_call(lambda p: p.detection("detection.voicemail.json", data={"type": verdict}))
-    assert_clean(result)
-    assert result.updates() == [HANG_UP]
-    assert "The mailbox cannot take a message (" + verdict + "), so the call is hung up." in result.lines
-    assert not any(line.startswith("Waiting up to") for line in result.lines)
-    assert "  outcome: voicemail_unavailable" in result.lines
-
-
-@pytest.mark.parametrize("fixture,changes,outcome", [
-    ("detection.voicemail.json", {"data": {"type": "speech.silence", "confidence": 0.9}}, "no_answer_detected"),
-    ("detection.close.json", {"event": "timeout", "data": {"timeout_ms": 45000}}, "no_answer_detected"),
+@pytest.mark.parametrize("fixture,changes", [
+    ("detection.voicemail.json", {"data": {"type": "speech.voicemail.full"}}),
+    ("detection.voicemail.json", {"data": {"type": "speech.voicemail.not_setup"}}),
+    ("detection.voicemail.json", {"data": {"type": "speech.silence", "confidence": 0.9}}),
+    ("detection.close.json", {"event": "timeout", "data": {"timeout_ms": 45000}}),
     ("detection.close.json", {"event": "error", "data": {"code": "stream_failed", "error": "audio stream ended",
-                                                         "recoverable": False}}, "detection_error"),
-    ("detection.close.json", {"event": "error", "data": {"code": "stream_failed", "error": "audio stream ended"}},
-     "detection_error"),
+                                                         "recoverable": False}}),
+    ("detection.close.json", {"event": "error", "data": {"code": "stream_failed", "error": "audio stream ended"}}),
 ])
-def test_silence_timeout_and_a_non_recoverable_error_hang_up(fixture, changes, outcome):
-    result = play_call(lambda p: p.detection(fixture, **changes))
-    assert_clean(result)
-    assert result.updates() == [HANG_UP]
-    assert "  outcome: " + outcome in result.lines
-
-
-def test_a_recoverable_error_does_not_act():
+def test_unavailable_mailbox_silence_timeout_and_a_fatal_error_do_not_hang_up(fixture, changes):
     def script(p):
-        p.detection("detection.close.json", event="error",
-                    data={"code": "decoder_reset", "error": "audio decoder restarted", "recoverable": True})
+        p.detection(fixture, **changes)
+        p.status("completed", "4")
+    result = play_call(script)
+    assert_clean(result)
+    assert result.updates() == []
+    assert "Hanging up." not in result.lines
+    assert "  outcome: ended_before_action" in result.lines
+
+
+@pytest.mark.parametrize("data", [
+    {"code": "decoder_reset", "error": "audio decoder restarted", "recoverable": True},
+    {"code": "stream_failed", "error": "audio stream ended", "recoverable": False},
+])
+def test_an_error_is_printed_and_a_later_beep_still_plays(data):
+    def script(p):
+        p.detection("detection.close.json", event="error", data=data)
         p.detection("detection.beep.json")
     result = play_call(script)
     assert_clean(result)
-    assert "Detection error: code=decoder_reset error=audio decoder restarted recoverable=true" in result.lines
+    assert ("Detection error: code=" + data["code"] + " error=" + data["error"] + " recoverable="
+            + ("true" if data["recoverable"] else "false")) in result.lines
     assert result.updates() == [[("Twiml", play_twiml("Play", VM_AUDIO_URL))]]
     assert "  outcome: voicemail_on_beep" in result.lines
 
@@ -322,14 +302,14 @@ def test_only_one_action_when_events_race():
     def script(p):
         parallel(lambda: p.detection("detection.beep.json"),
                  lambda: p.detection("detection.live-person.json"),
-                 lambda: p.detection("detection.voicemail.json", data={"type": "speech.silence"}))
+                 lambda: p.detection("detection.beep.json"))
     result = play_call(script, env={"DC_LIVE_TEXT": "Hello there"})
     assert_clean(result)
     assert len(result.updates()) == 1
     assert sum(1 for line in result.lines if line.startswith("  outcome: ")) == 1
 
 
-def test_a_repeated_delivery_is_acted_on_once():
+def test_a_repeated_beep_is_acted_on_once():
     def script(p):
         p.detection("detection.beep.json")
         p.detection("detection.beep.json")
@@ -337,7 +317,9 @@ def test_a_repeated_delivery_is_acted_on_once():
     result = play_call(script, complete_on_update=False)
     assert_clean(result)
     assert len(result.updates()) == 1
-    assert "  Detection webhooks: 1 received, 1 duplicates, 0 ignored" in result.lines
+    assert "Already acted on this call (voicemail_on_beep), so no new action." in result.lines
+    assert "  outcome: voicemail_on_beep" in result.lines
+    assert "  Detection webhooks: 2 received, 0 ignored" in result.lines
 
 
 def test_another_call_id_is_ignored():
@@ -348,7 +330,7 @@ def test_another_call_id_is_ignored():
     assert_clean(result)
     assert result.updates() == []
     assert any(line.startswith("Ignored Detection beep for call_id " + OTHER_CALL_ID) for line in result.lines)
-    assert "  Detection webhooks: 1 received, 0 duplicates, 1 ignored" in result.lines
+    assert "  Detection webhooks: 1 received, 1 ignored" in result.lines
     assert "  outcome: ended_before_action" in result.lines
 
 

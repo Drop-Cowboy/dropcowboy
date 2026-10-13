@@ -124,7 +124,6 @@ public sealed partial class DetectTwilioScenario : IAsyncDisposable
             ["DC_SECRET"] = RecipeHarness.Secret,
             ["DC_BASE_URL"] = Dc.BaseUrl,
             ["DC_VM_AUDIO_URL"] = AudioUrl,
-            ["DC_BEEP_WAIT_SECONDS"] = "1",
             ["PORT"] = Port
         };
 
@@ -307,11 +306,10 @@ public sealed partial class CallSim(DetectTwilioScenario scenario)
         await PostDetectionAsync(body);
     }
 
-    /// <summary>A Detection event built like the fixtures, with a fresh delivery_id.</summary>
-    public async Task EventAsync(string name, JsonObject data, string? deliveryId = null)
+    /// <summary>A Detection event built like the fixtures, with this run's call_id.</summary>
+    public async Task EventAsync(string name, JsonObject data)
     {
         var body = JsonNode.Parse(Fixtures.Read("detection.voicemail.json"))!.AsObject();
-        body["delivery_id"] = deliveryId ?? Guid.NewGuid().ToString();
         body["event"] = name;
         body["call_id"] = CallId;
         body["data"] = data;

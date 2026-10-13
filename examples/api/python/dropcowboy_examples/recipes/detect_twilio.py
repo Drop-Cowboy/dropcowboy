@@ -7,10 +7,11 @@ Run: python -m dropcowboy_examples.recipes.detect_twilio
 
 The recipe dials DC_TO from TWILIO_FROM. When the call is answered, its TwiML forks the
 audio to Detection with <Start><Stream> and waits silently. Detection posts signed
-webhooks to this receiver: a verdict such as speech.voicemail.greeting,
-speech.human.unknown or speech.silence, then the beep.
-On the beep (or a live person) the recipe redirects the live call with Twilio's REST API
-to play your message, then hang up. Twilio is called over plain HTTPS: no Twilio SDK.
+webhooks to this receiver: verdicts such as speech.human.unknown or
+speech.voicemail.greeting, and the beep.
+On the beep, or when a live person is detected, the recipe redirects the live call with
+Twilio's REST API to play your message, then hang up. Nothing else triggers an action.
+Twilio is called over plain HTTPS: no Twilio SDK.
 
 The Detection key travels in the TwiML, so it shows in the Twilio Console request logs.
 Use a dedicated key and delete it when done. Without DC_DETECTION_KEY the recipe creates
@@ -20,7 +21,6 @@ accounts are not supported: they play a notice before your TwiML runs.
 from __future__ import annotations
 
 import ipaddress
-import math
 import os
 import re
 import sys
@@ -38,7 +38,6 @@ from ..cli import INTERRUPTED, print_api_error
 from ..client import DcClient, DcError
 from ..config import DEFAULT_BASE_URL, DEFAULT_PORT, ConfigError, last4
 from ..detection import (
-    HANG_UP,
     NO_RESULT,
     NOT_ANSWERED,
     PLAY_LIVE,
@@ -57,7 +56,6 @@ from ..twilio import DEFAULT_TWILIO_BASE_URL, TwilioClient, TwilioError, twilio_
 
 BILLING_LINE = "This places a real phone call. Twilio bills the call and Drop Cowboy bills the Detection session."
 DEFAULT_DETECTION_URL = "wss://detect.dropcowboy.com/carrier/ws/twilio"
-STRATEGIES = ("standard", "beep_only", "live_check")
 TEMPORARY_KEY_NAME = "Twilio detection recipe (temporary)"
 TEMPORARY_KEY_SECONDS = 3600
 TEXT_LIMIT = 1000
@@ -114,10 +112,6 @@ class DetectSettings:
     vm_text: str = ""
     live_audio_url: str = ""
     live_text: str = ""
-    strategy: str = "standard"
-    detection_timeout_sec: int = 45
-    live_confidence: float = 0.6
-    beep_wait_seconds: float = 20
     ring_seconds: int = 30
     wait_seconds: float = 180
     port: int = DEFAULT_PORT
@@ -201,8 +195,6 @@ def load_detect_settings(env: Optional[Mapping[str, str]] = None) -> DetectSetti
             problems.append(name + " is " + str(len(value)) + " characters; the limit is " + str(TEXT_LIMIT) + ".")
 
     # 6. Numeric ranges.
-    timeout_sec = _whole(text("DC_DETECTION_TIMEOUT_SEC"), "DC_DETECTION_TIMEOUT_SEC", 45, 5, 120, problems)
-    beep_wait = _whole(text("DC_BEEP_WAIT_SECONDS"), "DC_BEEP_WAIT_SECONDS", 20, 1, 60, problems)
     ring_seconds = _whole(text("DC_RING_SECONDS"), "DC_RING_SECONDS", 30, 5, 60, problems)
     if text("DC_WAIT_SECONDS") in ("0", "00"):
         problems.append("DC_WAIT_SECONDS=0 is not allowed: this recipe has to listen for Detection and Twilio. "
@@ -210,13 +202,9 @@ def load_detect_settings(env: Optional[Mapping[str, str]] = None) -> DetectSetti
         wait_seconds = 180
     else:
         wait_seconds = _whole(text("DC_WAIT_SECONDS"), "DC_WAIT_SECONDS", 180, 60, 600, problems)
-    live_confidence = _fraction(text("DC_LIVE_CONFIDENCE"), "DC_LIVE_CONFIDENCE", 0.6, problems)
     port = _whole(text("PORT"), "PORT", DEFAULT_PORT, 0, 65535, problems)
 
-    # 7. Strategy and the Detection address.
-    strategy = text("DC_DETECTION_STRATEGY", "standard")
-    if strategy not in STRATEGIES:
-        problems.append("DC_DETECTION_STRATEGY must be standard, beep_only or live_check, in lowercase.")
+    # 7. The Detection address.
     detection_url = text("DC_DETECTION_URL", DEFAULT_DETECTION_URL)
     if not detection_url.lower().startswith("wss://"):
         problems.append("DC_DETECTION_URL must start with wss://.")
@@ -248,10 +236,6 @@ def load_detect_settings(env: Optional[Mapping[str, str]] = None) -> DetectSetti
         vm_text=vm_text,
         live_audio_url=live_audio_url,
         live_text=live_text,
-        strategy=strategy,
-        detection_timeout_sec=timeout_sec,
-        live_confidence=live_confidence,
-        beep_wait_seconds=beep_wait,
         ring_seconds=ring_seconds,
         wait_seconds=wait_seconds,
         port=port,
@@ -318,7 +302,7 @@ class _DetectRun:
         self.call_duration = ""
         self.call_closed = False
         self.latency_ms: Optional[int] = None
-        self.decision = CallDecision(settings.live_confidence, settings.beep_wait_seconds, out)
+        self.decision = CallDecision(out)
 
     def execute(self, health_base_url_for: Optional[Callable[[EmbeddedServer], str]]) -> int:
         """0 for any outcome in the summary, 1 when a clean-up step failed. Errors propagate after clean-up."""
@@ -388,8 +372,8 @@ class _DetectRun:
     def _start_receiver(self, health_base_url_for: Optional[Callable[[EmbeddedServer], str]]) -> None:
         settings = self.settings
         twiml = voice_twiml(
-            settings.detection_url, self.detection_key, settings.public_url, settings.strategy, self.call_id,
-            settings.detection_timeout_sec, int(settings.beep_wait_seconds),
+            settings.detection_url, self.detection_key, settings.public_url, self.call_id,
+            int(settings.wait_seconds) + 10,
         )
         self.receiver = DetectionReceiver(
             settings.public_url, settings.auth_token, self.detection_key, self.call_id, twiml, out=self.out,
@@ -441,24 +425,17 @@ class _DetectRun:
         deadline = self.call_started + self.settings.wait_seconds
         index = 0
         while True:
-            now = time.monotonic()
-            action = self.decision.on_timer(now)
-            if action is not None:
-                self._perform(action, now, "the beep wait ran out")
             if self._call_ended():
                 break
-            remaining = deadline - now
+            remaining = deadline - time.monotonic()
             if remaining <= 0:
                 break
-            wait = remaining
-            if self.decision.action is None and self.decision.beep_deadline is not None:
-                wait = min(wait, max(0.0, self.decision.beep_deadline - now))
-            events = self.receiver.events_since(index, wait)
+            events = self.receiver.events_since(index, remaining)
             index += len(events)
             for event in events:
                 self._handle(event)
 
-        if self.decision.action is None:
+        if self.decision.on_deadline() is not None:
             self.out(NO_RESULT_MESSAGE)
             if self._own_webhook_count() == 0:
                 self.out(NO_WEBHOOK_MESSAGE)
@@ -480,7 +457,7 @@ class _DetectRun:
             return
         if event.ignored:
             return
-        action = self.decision.on_detection_event(event.name, event.data, event.received_at)
+        action = self.decision.on_detection_event(event.name, event.data)
         if action is not None:
             what = event.data.get("type") if event.name == "detection" else event.name
             self._perform(action, event.received_at, "the receiver recorded the " + printable(what))
@@ -492,9 +469,6 @@ class _DetectRun:
         elif action.kind == PLAY_LIVE:
             self.out("Playing the live-person message.")
             self._update([("Twiml", play_twiml(self.settings.live_message()))], recorded_at, since)
-        elif action.kind == HANG_UP:
-            self.out("Hanging up.")
-            self._update(HANG_UP_FORM, recorded_at, since, hangs_up=True)
         else:
             self.out("The call ended before any action (" + printable(self.call_status) + "). No update sent.")
 
@@ -555,8 +529,8 @@ class _DetectRun:
         self.out("  call_id: " + self.call_id)
         counts = self.receiver.counts() if self.receiver else None
         if counts:
-            self.out("  Detection webhooks: " + str(counts.received) + " received, " + str(counts.duplicates)
-                     + " duplicates, " + str(counts.ignored) + " ignored")
+            self.out("  Detection webhooks: " + str(counts.received) + " received, " + str(counts.ignored)
+                     + " ignored")
 
     # Step 11 ------------------------------------------------------------------
 
@@ -632,21 +606,6 @@ def _whole(value: str, name: str, default: int, low: int, high: int, problems: L
         return default
     number = int(value)
     if number < low or number > high:
-        problems.append(message)
-        return default
-    return number
-
-
-def _fraction(value: str, name: str, default: float, problems: List[str]) -> float:
-    if not value:
-        return default
-    message = name + " must be a number from 0 to 1 (default " + str(default) + ")."
-    try:
-        number = float(value)
-    except ValueError:
-        problems.append(message)
-        return default
-    if math.isnan(number) or number < 0 or number > 1:
         problems.append(message)
         return default
     return number

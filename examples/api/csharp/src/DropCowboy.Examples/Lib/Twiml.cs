@@ -16,10 +16,8 @@ public sealed record DetectionStream(
     string DetectionUrl,
     string DetectionKey,
     string WebhookUrl,
-    string Strategy,
     string CallId,
-    int DetectionTimeoutSec,
-    int BeepWaitSeconds);
+    int PauseSeconds);
 
 /// <summary>
 /// The two TwiML documents the recipe uses. Every value is XML-escaped, so a "&amp;" in a
@@ -39,7 +37,6 @@ public static class Twiml
     /// </summary>
     public static string StartDetection(DetectionStream stream)
     {
-        var pause = stream.DetectionTimeoutSec + stream.BeepWaitSeconds + 10;
         string[] lines =
         [
             "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
@@ -49,12 +46,10 @@ public static class Twiml
             Parameter("api_key", stream.DetectionKey),
             Parameter("webhook_url", stream.WebhookUrl),
             Parameter("webhook_events", WebhookEvents),
-            Parameter("strategy", stream.Strategy),
             Parameter("call_id", stream.CallId),
-            Parameter("detection_timeout_sec", stream.DetectionTimeoutSec.ToString(CultureInfo.InvariantCulture)),
             "    </Stream>",
             "  </Start>",
-            $"  <Pause length=\"{pause.ToString(CultureInfo.InvariantCulture)}\"/>",
+            $"  <Pause length=\"{stream.PauseSeconds.ToString(CultureInfo.InvariantCulture)}\"/>",
             "  <Hangup/>",
             "</Response>"
         ];

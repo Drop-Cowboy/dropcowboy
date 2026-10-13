@@ -13,10 +13,8 @@ const TWIML = streamTwiml({
     detectionUrl: 'wss://detect.dropcowboy.com/carrier/ws/twilio',
     detectionKey: vectors.detection_key,
     publicUrl: PUBLIC_URL,
-    strategy: 'standard',
     callId: FIXTURE_CALL_ID,
-    detectionTimeoutSec: 45,
-    beepWaitSeconds: 20
+    waitSeconds: 180
 });
 
 async function withReceiver(options, body) {
@@ -161,7 +159,7 @@ describe('detection receiver: POST /webhooks/detection', () => {
             const entries = receiver.entriesSince(0);
             assert.equal(entries.length, 1);
             assert.equal(entries[0].body.event, 'beep');
-            assert.deepEqual(receiver.counts(), { received: 1, duplicates: 0, ignored: 0 });
+            assert.deepEqual(receiver.counts(), { received: 1, ignored: 0 });
         });
     });
 
@@ -207,23 +205,14 @@ describe('detection receiver: POST /webhooks/detection', () => {
         });
     });
 
-    it('answers duplicate: true for a repeated delivery_id, and falls back to X-Delivery-Id', async () => {
+    it('answers received: true and records every delivery, with no deduplication', async () => {
         await withReceiver({}, async ({ receiver, port }) => {
             await postVector({ port });
             const second = await postVector({ port });
             assert.equal(second.status, 200);
-            assert.deepEqual(await second.json(), { received: true, duplicate: true });
-            assert.equal(receiver.entriesSince(0).length, 1);
-            assert.deepEqual(receiver.counts(), { received: 1, duplicates: 1, ignored: 0 });
-        });
-        await withReceiver({ nowMs: Date.now }, async ({ receiver, port }) => {
-            const body = detectionBody('detection.close.json');
-            delete body.delivery_id;
-            const headers = { 'X-Delivery-Id': '3a7c9e1b-5d2f-4b86-a0c4-8e6f2b4d1a97' };
-            await postDetection({ port, body, key: vectors.detection_key, headers });
-            const again = await postDetection({ port, body, key: vectors.detection_key, headers });
-            assert.deepEqual(await again.json(), { received: true, duplicate: true });
-            assert.equal(receiver.counts().duplicates, 1);
+            assert.deepEqual(await second.json(), { received: true });
+            assert.equal(receiver.entriesSince(0).length, 2);
+            assert.deepEqual(receiver.counts(), { received: 2, ignored: 0 });
         });
     });
 
@@ -235,7 +224,7 @@ describe('detection receiver: POST /webhooks/detection', () => {
             const entries = receiver.entriesSince(0);
             assert.equal(entries.length, 1);
             assert.equal(entries[0].ignored, true);
-            assert.deepEqual(receiver.counts(), { received: 1, duplicates: 0, ignored: 1 });
+            assert.deepEqual(receiver.counts(), { received: 1, ignored: 1 });
             assert.match(out.text(), /for another call_id .* ignored/);
         });
     });

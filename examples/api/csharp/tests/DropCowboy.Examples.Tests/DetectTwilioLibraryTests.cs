@@ -136,10 +136,8 @@ public sealed class DetectTwilioLibraryTests
             "wss://detect.dropcowboy.com/carrier/ws/twilio?a=1&b=2",
             "key<&>\"'",
             "https://tunnel.example.org/webhooks/detection",
-            "beep_only",
             "0d6f2b8e-4a1c-4e93-8b75-2c9e1f4a6d38",
-            120,
-            60));
+            190));
 
         var expected = """
             <?xml version="1.0" encoding="UTF-8"?>
@@ -149,9 +147,7 @@ public sealed class DetectTwilioLibraryTests
                   <Parameter name="api_key" value="key&lt;&amp;&gt;&quot;&apos;"/>
                   <Parameter name="webhook_url" value="https://tunnel.example.org/webhooks/detection"/>
                   <Parameter name="webhook_events" value="detection,beep,screening,timeout,error,close"/>
-                  <Parameter name="strategy" value="beep_only"/>
                   <Parameter name="call_id" value="0d6f2b8e-4a1c-4e93-8b75-2c9e1f4a6d38"/>
-                  <Parameter name="detection_timeout_sec" value="120"/>
                 </Stream>
               </Start>
               <Pause length="190"/>
@@ -263,10 +259,6 @@ public sealed class DetectTwilioLibraryTests
 
         Assert.Equal("https://api.twilio.com", settings.TwilioBaseUrl);
         Assert.Equal("wss://detect.dropcowboy.com/carrier/ws/twilio", settings.DetectionUrl);
-        Assert.Equal("standard", settings.Strategy);
-        Assert.Equal(45, settings.DetectionTimeoutSec);
-        Assert.Equal(0.6, settings.LiveConfidence);
-        Assert.Equal(20, settings.BeepWaitSeconds);
         Assert.Equal(30, settings.RingSeconds);
         Assert.Equal(180, settings.WaitSeconds);
         Assert.Equal(3000, settings.Port);
@@ -304,8 +296,7 @@ public sealed class DetectTwilioLibraryTests
             ["TWILIO_ACCOUNT_SID"] = "AB1",
             ["DC_PUBLIC_URL"] = "http://tunnel.example.org",
             ["DC_VM_AUDIO_URL"] = "https://audio.example.net/a.ogg",
-            ["DC_DETECTION_TIMEOUT_SEC"] = "4",
-            ["DC_DETECTION_STRATEGY"] = "quick"
+            ["DC_RING_SECONDS"] = "4"
         });
 
         string[] order =
@@ -317,8 +308,7 @@ public sealed class DetectTwilioLibraryTests
             "TWILIO_ACCOUNT_SID must be AC",
             "DC_PUBLIC_URL must start with https://",
             "DC_VM_AUDIO_URL must be",
-            "DC_DETECTION_TIMEOUT_SEC must be a whole number from 5 to 120",
-            "DC_DETECTION_STRATEGY must be"
+            "DC_RING_SECONDS must be a whole number from 5 to 60"
         ];
         var last = -1;
         foreach (var part in order)
@@ -330,11 +320,6 @@ public sealed class DetectTwilioLibraryTests
     }
 
     [Theory]
-    [InlineData("DC_DETECTION_TIMEOUT_SEC", "121")]
-    [InlineData("DC_LIVE_CONFIDENCE", "1.5")]
-    [InlineData("DC_LIVE_CONFIDENCE", "high")]
-    [InlineData("DC_BEEP_WAIT_SECONDS", "0")]
-    [InlineData("DC_BEEP_WAIT_SECONDS", "61")]
     [InlineData("DC_RING_SECONDS", "4")]
     [InlineData("DC_RING_SECONDS", "61")]
     [InlineData("DC_WAIT_SECONDS", "601")]
@@ -345,10 +330,14 @@ public sealed class DetectTwilioLibraryTests
         Assert.Contains(name, Problems(Valid((name, value))));
     }
 
-    [Fact]
-    public void BadLiveConfidenceNamesTheDefault()
+    [Theory]
+    [InlineData("DC_DETECTION_STRATEGY", "quick")]
+    [InlineData("DC_DETECTION_TIMEOUT_SEC", "4")]
+    [InlineData("DC_BEEP_WAIT_SECONDS", "0")]
+    [InlineData("DC_LIVE_CONFIDENCE", "high")]
+    public void RemovedSettingsAreNotValidated(string name, string value)
     {
-        Assert.Contains("DC_LIVE_CONFIDENCE must be a number from 0 to 1 (default 0.6).", Problems(Valid(("DC_LIVE_CONFIDENCE", "high"))));
+        Assert.NotNull(DetectTwilioSettings.Load(new Config(Valid((name, value)))));
     }
 
     [Fact]
@@ -363,7 +352,6 @@ public sealed class DetectTwilioLibraryTests
     {
         var message = Problems(Valid(
             ("DC_TO", "12"),
-            ("DC_DETECTION_STRATEGY", "quick"),
             ("DC_VM_AUDIO_URL", "https://media.example.com/voicemail.mp3"),
             ("TWILIO_FROM", "+13125550100"),
             ("TWILIO_ACCOUNT_SID", "AC00000000000000000000000000000000")));
@@ -371,7 +359,6 @@ public sealed class DetectTwilioLibraryTests
         string[] expected =
         [
             "DC_TO must be in E.164 format: a plus sign and 8 to 15 digits, for example +13125550142.",
-            "DC_DETECTION_STRATEGY must be standard, beep_only or live_check.",
             SampleValues.Describe("DC_VM_AUDIO_URL", "https://media.example.com/voicemail.mp3"),
             SampleValues.Describe("TWILIO_FROM", "+13125550100"),
             "TWILIO_ACCOUNT_SID=AC00000000000000000000000000000000: this is the placeholder from our fixtures; use your own."

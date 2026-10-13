@@ -115,10 +115,6 @@ describe('detect-twilio settings', () => {
         const s = detectSettingsFromEnv(settingsEnv({ DC_PUBLIC_URL: PUBLIC_URL + '/' }));
         assert.equal(s.publicUrl, PUBLIC_URL);
         assert.equal(s.detectionUrl, 'wss://detect.dropcowboy.com/carrier/ws/twilio');
-        assert.equal(s.strategy, 'standard');
-        assert.equal(s.detectionTimeoutSec, 45);
-        assert.equal(s.liveConfidence, 0.6);
-        assert.equal(s.beepWaitSeconds, 20);
         assert.equal(s.ringSeconds, 30);
         assert.equal(s.waitSeconds, 180);
         assert.equal(s.port, 3000);
@@ -193,31 +189,31 @@ describe('detect-twilio settings', () => {
         assert.ok(problemsOf(settingsEnv({ DC_WAIT_SECONDS: '0' })).some((p) => p.startsWith('DC_WAIT_SECONDS=0 does not work')));
     });
 
-    it('checks the ranges, the strategy, the audio URLs, the text length and DC_DETECTION_URL', () => {
+    it('checks the ranges, the audio URLs, the text length and DC_DETECTION_URL', () => {
         const problems = problemsOf(settingsEnv({
-            DC_DETECTION_TIMEOUT_SEC: '4',
-            DC_LIVE_CONFIDENCE: '1.5',
-            DC_BEEP_WAIT_SECONDS: '61',
             DC_RING_SECONDS: 'ten',
             DC_WAIT_SECONDS: '601',
-            DC_DETECTION_STRATEGY: 'fast',
             DC_LIVE_AUDIO_URL: 'http://audio.example.org/live.mp3',
             DC_VM_AUDIO_URL: 'https://audio.example.org/voicemail.ogg',
             DC_LIVE_TEXT: 'x'.repeat(1001),
             DC_DETECTION_URL: 'https://detect.example.org'
         }));
-        for (const start of ['DC_DETECTION_TIMEOUT_SEC', 'DC_LIVE_CONFIDENCE', 'DC_BEEP_WAIT_SECONDS', 'DC_RING_SECONDS', 'DC_WAIT_SECONDS', 'DC_DETECTION_STRATEGY', 'DC_LIVE_AUDIO_URL', 'DC_VM_AUDIO_URL', 'DC_LIVE_TEXT', 'DC_DETECTION_URL']) {
+        for (const start of ['DC_RING_SECONDS', 'DC_WAIT_SECONDS', 'DC_LIVE_AUDIO_URL', 'DC_VM_AUDIO_URL', 'DC_LIVE_TEXT', 'DC_DETECTION_URL']) {
             assert.ok(problems.some((p) => p.startsWith(start)), start);
         }
-        assert.ok(problems.includes('DC_LIVE_CONFIDENCE must be a number from 0 to 1 (default 0.6).'));
         assert.equal(detectSettingsFromEnv(settingsEnv({ DC_VM_AUDIO_URL: 'https://audio.example.org/VM.WAV' })).voicemailMessage.value, 'https://audio.example.org/VM.WAV');
     });
 
-    it('matches the strategy exactly, in lowercase', () => {
-        for (const strategy of ['Standard', 'BEEP_ONLY', 'live-check']) {
-            assert.deepEqual(problemsOf(settingsEnv({ DC_DETECTION_STRATEGY: strategy })), ['DC_DETECTION_STRATEGY must be one of standard, beep_only, live_check (default standard).'], strategy);
+    it('has no tuning settings: a strategy, timeout, confidence or beep wait is ignored', () => {
+        const s = detectSettingsFromEnv(settingsEnv({
+            DC_DETECTION_STRATEGY: 'fast',
+            DC_DETECTION_TIMEOUT_SEC: '4',
+            DC_LIVE_CONFIDENCE: '1.5',
+            DC_BEEP_WAIT_SECONDS: '61'
+        }));
+        for (const name of ['strategy', 'detectionTimeoutSec', 'liveConfidence', 'beepWaitSeconds']) {
+            assert.equal(name in s, false, name);
         }
-        assert.equal(detectSettingsFromEnv(settingsEnv({ DC_DETECTION_STRATEGY: 'beep_only' })).strategy, 'beep_only');
     });
 
     it('lists the sample-value and zero-SID problems after the validation problems', () => {
@@ -246,7 +242,7 @@ describe('detect-twilio settings', () => {
 });
 
 describe('TwiML', () => {
-    const base = { detectionUrl: 'wss://detect.dropcowboy.com/carrier/ws/twilio', detectionKey: DETECTION_KEY, publicUrl: PUBLIC_URL, strategy: 'standard', callId: 'fa6de30e-9e3a-40c4-97fc-1fdad5f21338', detectionTimeoutSec: 45, beepWaitSeconds: 20 };
+    const base = { detectionUrl: 'wss://detect.dropcowboy.com/carrier/ws/twilio', detectionKey: DETECTION_KEY, publicUrl: PUBLIC_URL, callId: 'fa6de30e-9e3a-40c4-97fc-1fdad5f21338', waitSeconds: 180 };
 
     it('forks the audio to Detection and pauses while it listens', () => {
         assert.equal(streamTwiml(base), [
@@ -257,12 +253,10 @@ describe('TwiML', () => {
             '      <Parameter name="api_key" value="' + DETECTION_KEY + '"/>',
             '      <Parameter name="webhook_url" value="https://tunnel.example.org/webhooks/detection"/>',
             '      <Parameter name="webhook_events" value="detection,beep,screening,timeout,error,close"/>',
-            '      <Parameter name="strategy" value="standard"/>',
             '      <Parameter name="call_id" value="fa6de30e-9e3a-40c4-97fc-1fdad5f21338"/>',
-            '      <Parameter name="detection_timeout_sec" value="45"/>',
             '    </Stream>',
             '  </Start>',
-            '  <Pause length="75"/>',
+            '  <Pause length="190"/>',
             '  <Hangup/>',
             '</Response>'
         ].join('\n'));
@@ -303,8 +297,8 @@ describe('Calls.json form', () => {
 });
 
 describe('call decisions', () => {
-    function decision(liveConfidence = 0.6) {
-        return new CallDecision({ liveConfidence });
+    function decision() {
+        return new CallDecision();
     }
     const beep = fixtureJson('detection.beep.json');
     const voicemail = fixtureJson('detection.voicemail.json');
@@ -319,7 +313,7 @@ describe('call decisions', () => {
         assert.deepEqual(d.onDetection(beep).action, { kind: 'play', message: 'voicemail' });
         assert.equal(d.outcome, OUTCOMES.voicemailOnBeep);
         const after = decision();
-        assert.equal(after.onDetection(voicemail).startBeepTimer, true);
+        assert.equal(after.onDetection(voicemail).action, null);
         assert.deepEqual(after.onDetection(beep).action, { kind: 'play', message: 'voicemail' });
     });
 
@@ -329,94 +323,61 @@ describe('call decisions', () => {
         assert.equal(VERDICTS.humanPrefix, 'speech.human.');
     });
 
-    it('acts on speech.human.unknown at or above DC_LIVE_CONFIDENCE only', () => {
-        assert.deepEqual(decision(0.7).onDetection(withData(live, { confidence: 0.7 })).action, { kind: 'play', message: 'live' });
-        assert.deepEqual(decision(0.7).onDetection(withData(live, { confidence: 0.95 })).action, { kind: 'play', message: 'live' });
-        const at = decision();
-        assert.deepEqual(at.onDetection(live).action, { kind: 'play', message: 'live' });
-        assert.equal(at.outcome, OUTCOMES.livePerson);
-        const below = decision(0.7);
-        const step = below.onDetection(withData(live, { confidence: 0.69 }));
-        assert.equal(step.action, null);
-        assert.equal(below.acted, false);
-        assert.ok(step.lines.includes('  Below DC_LIVE_CONFIDENCE=0.7, so not acted on.'));
-    });
-
-    it('acts on another speech.human. subtype, and not on the bare word live_person', () => {
+    it('plays the live message for any speech.human. verdict, whatever its confidence', () => {
+        for (const confidence of [0.1, 0.6, 0.95]) {
+            const d = decision();
+            assert.deepEqual(d.onDetection(withData(live, { confidence })).action, { kind: 'play', message: 'live' }, String(confidence));
+            assert.equal(d.outcome, OUTCOMES.livePerson);
+        }
         const adult = decision();
         assert.deepEqual(adult.onDetection(withData(live, { type: 'speech.human.adult', confidence: 0.8 })).action, { kind: 'play', message: 'live' });
-        assert.equal(adult.outcome, OUTCOMES.livePerson);
         const bare = decision();
         assert.equal(bare.onDetection(withData(live, { type: 'live_person', confidence: 0.99 })).action, null);
         assert.equal(bare.acted, false);
     });
 
-    it('starts the beep timer once on speech.voicemail.greeting, and plays when it runs out', () => {
-        const d = decision();
-        assert.equal(d.onDetection(voicemail).startBeepTimer, true);
-        assert.equal(d.onDetection(voicemail).startBeepTimer, false);
-        assert.deepEqual(d.onBeepTimeout().action, { kind: 'play', message: 'voicemail' });
-        assert.equal(d.outcome, OUTCOMES.voicemailNoBeep);
-        for (const type of ['voicemail', 'speech.voicemail']) {
-            assert.equal(decision().onDetection(withData(voicemail, { type })).startBeepTimer, false, type);
-        }
-    });
-
-    it('hangs up when the mailbox cannot take a message', () => {
-        for (const type of ['speech.voicemail.full', 'speech.voicemail.not_setup']) {
-            const d = decision();
-            const step = d.onDetection(withData(voicemail, { type }));
-            assert.deepEqual(step.action, { kind: 'hangup' }, type);
-            assert.equal(d.outcome, OUTCOMES.voicemailUnavailable);
-            assert.equal(OUTCOMES.voicemailUnavailable, 'voicemail_unavailable');
-            assert.ok(step.lines.includes('The mailbox cannot take a message (' + type + '), so the call is hung up.'), type);
-        }
-    });
-
-    it('prints and takes no action on the other verdicts', () => {
-        for (const type of ['speech.ivr', 'speech.screening', 'speech.carrier.intercept', 'speech.unknown', 'silence', 'machine', undefined]) {
+    it('prints and takes no action on every other verdict and event', () => {
+        const types = ['speech.voicemail.greeting', 'speech.voicemail.full', 'speech.voicemail.not_setup', 'speech.silence', 'speech.ivr', 'speech.screening', 'speech.carrier.intercept', 'speech.unknown', 'silence', 'machine', undefined];
+        for (const type of types) {
             const d = decision();
             const step = d.onDetection(withData(voicemail, { type }));
             assert.equal(step.action, null, String(type));
-            assert.equal(step.startBeepTimer, false, String(type));
             assert.equal(d.acted, false, String(type));
             assert.ok(step.lines[0].startsWith('Detection verdict: type='), String(type));
         }
+        const others = [
+            { event: 'timeout', data: { timestamp_ms: 45000 } },
+            { event: 'error', data: { code: 'stream_error', error: 'Audio stopped', recoverable: false } },
+            { event: 'error', data: { code: 'slow_audio', error: 'Late frames', recoverable: true } },
+            { event: 'screening', data: { screening_type: 'call_screen', suggested_action: 'speak', suggested_dtmf: '1' } },
+            fixtureJson('detection.close.json')
+        ];
+        for (const body of others) {
+            const d = decision();
+            assert.equal(d.onDetection(body).action, null, body.event);
+            assert.equal(d.acted, false, body.event);
+        }
     });
 
-    it('hangs up on speech.silence, timeout and a non-recoverable error, and not on a recoverable one', () => {
-        const silence = decision();
-        assert.deepEqual(silence.onDetection(withData(voicemail, { type: 'speech.silence' })).action, { kind: 'hangup' });
-        assert.equal(silence.outcome, OUTCOMES.noAnswerDetected);
-        const timeout = decision();
-        assert.deepEqual(timeout.onDetection({ event: 'timeout', data: { timestamp_ms: 45000 } }).action, { kind: 'hangup' });
-        assert.equal(timeout.outcome, OUTCOMES.noAnswerDetected);
-        const fatal = decision();
-        const step = fatal.onDetection({ event: 'error', data: { code: 'stream_error', error: 'Audio stopped', recoverable: false } });
-        assert.deepEqual(step.action, { kind: 'hangup' });
-        assert.equal(fatal.outcome, OUTCOMES.detectionError);
-        assert.ok(step.lines[0].includes('code=stream_error'));
-        const recoverable = decision();
-        assert.equal(recoverable.onDetection({ event: 'error', data: { code: 'slow_audio', error: 'Late frames', recoverable: true } }).action, null);
-        assert.equal(recoverable.acted, false);
-    });
-
-    it('prints screening and close and takes no action', () => {
+    it('still plays on a beep after an event that took no action', () => {
         const d = decision();
-        const screening = d.onDetection({ event: 'screening', data: { screening_type: 'call_screen', suggested_action: 'speak', suggested_dtmf: '1' } });
-        assert.equal(screening.action, null);
-        assert.ok(screening.lines[0].includes('screening_type=call_screen'));
-        assert.equal(d.onDetection(fixtureJson('detection.close.json')).action, null);
-        assert.equal(d.acted, false);
+        assert.equal(d.onDetection({ event: 'error', data: { code: 'stream_error', recoverable: false } }).action, null);
+        assert.deepEqual(d.onDetection(beep).action, { kind: 'play', message: 'voicemail' });
     });
 
     it('acts once, whatever arrives after', () => {
         const d = decision();
         assert.notEqual(d.onDetection(beep).action, null);
         assert.equal(d.onDetection(live).action, null);
-        assert.equal(d.onBeepTimeout().action, null);
-        assert.equal(d.onDetection({ event: 'timeout', data: {} }).action, null);
+        assert.equal(d.onDetection(beep).action, null);
+        assert.equal(d.onDeadline().action, null);
         assert.equal(d.outcome, OUTCOMES.voicemailOnBeep);
+    });
+
+    it('hangs up at the end of the run when nothing was played', () => {
+        const d = decision();
+        assert.deepEqual(d.onDeadline().action, { kind: 'hangup' });
+        assert.equal(d.outcome, OUTCOMES.noResult);
     });
 
     it('ends without an action on busy, no-answer, failed, canceled or completed', () => {
