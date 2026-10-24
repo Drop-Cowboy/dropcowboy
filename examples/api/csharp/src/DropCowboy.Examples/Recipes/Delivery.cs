@@ -95,7 +95,7 @@ public static class Delivery
         return result;
     }
 
-    // Callbacks carry the foreign_id. Webhook events do not, so those match on the recipient.
+    // A callback is matched on the foreign_id, and a status webhook on the recipient, which every one carries.
     // Receipt events report a later stage and never end the wait.
     private static bool IsResultFor(ReceivedEvent e, string foreignId, string recipient)
     {

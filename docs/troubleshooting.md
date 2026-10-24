@@ -14,6 +14,11 @@ Every request and every delivery attempt is also listed in
 [**Settings > API Logs**](https://www.dropcowboy.com/app/#/api-logs). Search
 it for the `message_id` from your `202`.
 
+Working with an AI assistant? Paste it the error, word for word, and ask it to
+check this page. Using the Starter CRM? Its own
+[Troubleshooting](https://github.com/Drop-Cowboy/starter-crm/blob/main/TROUBLESHOOTING.md)
+covers the app.
+
 ## I got a 202 but nothing arrived
 
 A `202` means the request is in line, not that it was sent. The result went
@@ -61,6 +66,33 @@ Uploads need `media:write`.
   speech instead, or ask support about `audio_url` (BYOC plans only).
 - `3040`: your account is in testing mode and the number isn't a test number.
   Add it on the **Dialing rules** page.
+
+## A call or text failed with `sandbox_only`
+
+Your team hasn't connected a carrier or added funds yet, so it can call and
+text only free 555 test numbers, such as `+15555550002`. The token's
+`sandbox_only_reason` says which is missing: `byoc_required` (no carrier) or
+`insufficient_balance` (no funds).
+
+**Fix:** keep building with 555 numbers, or connect a carrier and add funds,
+then mint a new token. A token minted before that stays limited until it
+expires. See [Test numbers](concepts/test-numbers.md).
+
+## A test call or text didn't do what I expected
+
+- **Refused with `sandbox_concurrency`.** Five test calls are already in
+  progress. Hang one up and call again.
+- **Refused with `sandbox_caller_id`.** A 555 number was the caller ID of a call
+  to a real number. Choose one of your own numbers as the caller ID.
+- **No reply to a test text.** The text started with
+  `sandbox got your message:`, or the same sender has had 10 replies in the
+  last hour. Wait, then send again.
+- **A text to a number like `+13125550142` was charged.** That's a real number
+  with a real area code. Only area code 555 is free.
+- **A 555 number returned a result code but never replied.** It's a
+  [simulated number](concepts/test-numbers.md#simulated-numbers), or in the
+  reserved `+1 555 000` or `+1 555 003` range. Use a number outside
+  `+1 555 000` to `+1 555 003`.
 
 ## The webhook signature doesn't verify
 

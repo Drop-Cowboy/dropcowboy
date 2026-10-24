@@ -274,8 +274,8 @@ reads it:
 - It answers an `event_id` it has already seen with
   `{"received": true, "duplicate": true}`.
 
-A status webhook doesn't include your `foreign_id`, so the quickstart matches
-it to the send by the number it went to, and by arriving after the send.
+The quickstart matches a status webhook to the send by the number it went to,
+and by arriving after the send. The webhook also carries your `foreign_id`.
 
 ### Let the quickstart manage the webhook
 

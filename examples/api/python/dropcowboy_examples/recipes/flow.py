@@ -21,8 +21,8 @@ Output = Callable[[str], None]
 def with_result_fields(body: Dict[str, Any], config: Config, foreign_id: str) -> Dict[str, Any]:
     """Add the fields that let you find the result later.
 
-    `foreign_id` comes back on the callback only. Status webhooks do not carry it.
-    The callback is unsigned and is tried once, so treat it as a hint and rely on a
+    `foreign_id` comes back on the callback and on status webhooks. The callback
+    is unsigned and is tried once, so treat it as a hint and rely on a
     subscribed webhook for anything that matters.
     """
     body["foreign_id"] = foreign_id
@@ -96,7 +96,7 @@ def _send_then_wait(
 
 
 def _is_result_for(event: ReceivedEvent, foreign_id: str, to: str) -> bool:
-    """A callback names our `foreign_id`. A status webhook carries no `foreign_id`, so match on `to`."""
+    """A callback is matched on our `foreign_id`, and a status webhook on `to`, which every one carries."""
     if event.source == "callback":
         return event.data.get("foreign_id") == foreign_id
     return event.name == "contact.rvm.status" and event.data.get("to") == to

@@ -60,9 +60,9 @@ async function sendAndWait({ client, env, out, to, buildBody }) {
     }
 }
 
-// A callback is matched on the foreign_id this send used. A status webhook does
-// not carry foreign_id, so it is matched on the recipient number and on having
-// arrived after the send. Receipt events (proof of delivery) are not results.
+// A callback is matched on the foreign_id this send used, and a status webhook
+// on the recipient number and on having arrived after the send. Receipt events
+// (proof of delivery) are not results.
 function isResultFor({ foreignId, to, sentAt }) {
     return function (entry) {
         if (entry.received_at < sentAt || entry.result === null) {

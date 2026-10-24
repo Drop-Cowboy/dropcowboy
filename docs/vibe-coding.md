@@ -46,8 +46,9 @@ placeholders:
 Keep that file out of git.
 
 **The MCP tools act on your real account.** If you ask the assistant to send a
-voicemail, it sends one, and it is billed. Ask it to write code, or to send
-only to your own test number.
+voicemail, it sends one, and it is billed. Ask it to write code, or to call
+and text only free 555 test numbers, such as `+15555550002`; see
+[Test numbers](concepts/test-numbers.md).
 
 ## Prompts
 
@@ -74,9 +75,9 @@ ringless voicemail with the Drop Cowboy API.
 - Give up on a request after 30 seconds. Retry once, after 2 seconds, on a
   timeout, a dropped connection, a 500 or a 502, with the same
   Idempotency-Key and body. Never retry anything else.
-- Print the foreign_id too. callback_url echoes it back; message_id never
-  comes back. Without CALLBACK_URL, say that webhook results are matched on
-  the to number instead.
+- Print the foreign_id too, and explain that results are matched on it:
+  callback_url and the contact.rvm.status webhook both echo it back, but
+  message_id never comes back.
 ```
 
 ### 2. Receive results with a signed webhook
@@ -127,11 +128,38 @@ address from DC_API_BASE, defaulting to https://api-v2.dropcowboy.com. Do not
 send anything else.
 ```
 
-### Using these in Lovable or ChatGPT
+### 4. Build a CRM with calling and texting
 
-Paste `AGENTS.md`, then the prompt. Tell it the code must run on a server
-(in Lovable, an edge function), with the key and secret stored as secrets.
-Browser code must never see them.
+Don't start from nothing: the
+[Starter CRM](https://github.com/Drop-Cowboy/starter-crm) already has contacts,
+calling, texting, a pipeline and a shared inbox, and its rules for assistants.
+Make your own copy with **Use this template**, open it in your assistant, and
+paste:
+
+```text
+Read AGENTS.md and README.md. Help me run this Starter CRM on my computer,
+then add a contact with the number +1 555 555 0002 and show me how to call
+and text it. Never ask me to paste my API key or secret into this chat:
+tell me to run npm run setup and paste them there.
+```
+
+The Starter CRM's
+[Build with AI](https://github.com/Drop-Cowboy/starter-crm/blob/main/docs/build-with-ai.md)
+guide has the next prompts: rebrand it, add your own screens, react to
+webhooks and put it online.
+
+### Using Lovable, Bolt or ChatGPT
+
+- **ChatGPT** can't connect to the MCP server yet. Paste `AGENTS.md`, then the
+  prompt, and copy the answer into your project yourself.
+- **Lovable** runs your app on its own backend. Paste `AGENTS.md`, then the
+  prompt, and tell it the Drop Cowboy calls must run in an edge function, with
+  the key and secret stored as Lovable secrets. The page must never see them.
+- **Bolt** and similar tools can open a GitHub repository and deploy it to
+  Netlify. Open your copy of the Starter CRM and follow its
+  [Netlify guide](https://github.com/Drop-Cowboy/starter-crm/blob/main/HOSTING.md#netlify).
+
+Whatever the tool, browser code must never see your key or secret.
 
 ## Check what it wrote
 

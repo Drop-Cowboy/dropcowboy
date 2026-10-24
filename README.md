@@ -10,6 +10,35 @@ coding assistants build with it for you.
 A ringless voicemail delivers your recorded message directly to the contact's
 voicemail box.
 
+New here? Pick a path:
+
+- **Build a CRM or a calling and texting app:** start from the
+  [Starter CRM](#start-from-a-working-crm). It runs in minutes, and its calls
+  and texts to test numbers are free. (It needs an API key, which needs a paid
+  plan.)
+- **Add voicemail or texts to an app you already have:** follow
+  [Send your first voicemail](#send-your-first-voicemail).
+- **Build with an AI assistant, with or without coding:** see
+  [Build it with an AI assistant](#build-it-with-an-ai-assistant).
+- **No code at all:** use [Automation](#what-you-can-build), built into every
+  account.
+
+[`docs/`](docs/README.md) lists every guide in this repo by what you want to
+do.
+
+## Try calling and texting for free
+
+Every account can call and text numbers in area code 555, such as
+`+15555550002`, for free. Nothing reaches a real phone, and you don't need a
+carrier, a phone number, registration or funds. A test call behaves the way
+the last four digits say: `0002` is a person answering, `0003` is a voicemail
+greeting, `0005` is busy. A test text gets an automatic reply a few seconds
+later.
+
+Call one from the dashboard's dial pad, or text one with the API. The
+[test numbers guide](docs/concepts/test-numbers.md) has every number and what
+it does.
+
 ## Send your first voicemail
 
 You need Node.js 20 or newer and about five minutes. The script has no
@@ -17,7 +46,8 @@ packages to install.
 
 1. Log in to Drop Cowboy and open
    [**Developers > API Keys**](https://www.dropcowboy.com/app/#/api-keys).
-   Create a key and copy both parts. You only see the secret once.
+   Create a key and copy both parts. You only see the secret once. API keys
+   need a paid plan; on a free trial the button is turned off.
 2. Open [**Dialing rules**](https://www.dropcowboy.com/app/#/dialing-rules)
    and add your own cell number as a test number.
 3. Download the code and make your settings file:
@@ -31,6 +61,10 @@ packages to install.
 4. Open `.env` and fill in `DC_KEY`, `DC_SECRET`, `DC_TO` (your number, like
    `+15555550123`) and `DC_AUDIO_FILE` (the path to an `.mp3` or `.wav` on
    your computer).
+
+   No phone handy? Set `DC_TO=+15550010001`, a
+   [simulated number](docs/concepts/test-numbers.md#simulated-numbers).
+   Nothing is dialed, it's free, and the result is always `success`.
 5. Run it:
 
    ```bash
@@ -111,7 +145,10 @@ messages and RCS, the richer kind of text with images and buttons.
 The [Starter CRM](https://github.com/Drop-Cowboy/starter-crm) is a contacts
 CRM with calling, texting, a pipeline and a shared inbox, built on Drop Cowboy
 Building Blocks. It is a GitHub template in its own repository: click **Use
-this template** there to start your own product from it.
+this template** there to start your own product from it, or open it in
+GitHub Codespaces to try it in your browser. Its first call and text go to
+free 555 test numbers, so you can build the whole thing before you add funds
+or connect a carrier. It does need an API key, which needs a paid plan.
 
 <a href="https://github.com/Drop-Cowboy/starter-crm"><img src="https://raw.githubusercontent.com/Drop-Cowboy/starter-crm/main/docs/screenshots/contact.webp" alt="A contact's page in the Starter CRM, with Call, Text and Record consent buttons and live webhook activity" width="720"></a>
 
@@ -151,6 +188,10 @@ your tool. It shows the exact setup to paste.
 Cursor, Claude, ChatGPT or Lovable to build a send, a webhook receiver and a
 campaign. Coding agents read [`AGENTS.md`](AGENTS.md) for the facts they need.
 
+Building a whole CRM? Start from the Starter CRM and follow its
+[Build with AI](https://github.com/Drop-Cowboy/starter-crm/blob/main/docs/build-with-ai.md)
+guide. It has prompts to set it up, rebrand it and add your own screens.
+
 ## Reference and tools
 
 - [Developer hub](https://www.dropcowboy.com/developers): every guide
@@ -168,7 +209,7 @@ campaign. Coding agents read [`AGENTS.md`](AGENTS.md) for the facts they need.
 
 1. Only send to people who agreed to hear from you.
 2. Keep your API secret on your server. Never put it in a web page or a phone app.
-3. Test with your own number first.
+3. Test with 555 numbers or your own phone first.
 
 ## Using the old v1 API?
 

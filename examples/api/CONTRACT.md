@@ -665,8 +665,9 @@ event and responding to it. It is a demonstration, not a delivery pipeline.
   requests (method, path) and the exact JSON body of `POST /rvm`, including that the
   forbidden fields are absent (`caller_id` on retail and local presence, `phone_line_id`
   on BYOC, `audio_url`/`media_id` alongside `tts_body`).
-- Matching results to sends: callbacks echo `foreign_id`. Status webhooks carry no
-  `foreign_id`, so recipes match them on `data.to` for events that arrive after the send.
+- Matching results to sends: callbacks echo `foreign_id`, and recipes match them on it.
+  Status webhooks carry `foreign_id` too, but recipes match them on `data.to` for events
+  that arrive after the send.
 - Assert `Idempotency-Key` is a UUID on `POST /rvm` (and absent on line creation) and `x-key`/`x-secret` are sent, and that the
   secret never appears in captured stdout/stderr.
 - Local presence: rent is NOT called unless `DC_RENT=yes`; import polling handles

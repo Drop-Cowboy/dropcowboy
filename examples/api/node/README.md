@@ -175,7 +175,7 @@ A `202` means the request was accepted and queued. It does not mean the voicemai
 
 For reason codes `3001`, `3014` and `3040` the summary adds a `What to do:` line.
 
-A status webhook does not carry your `foreign_id`, so the recipes match it on the recipient number and on arriving after the send.
+The recipes match a status webhook on the recipient number and on arriving after the send. It also carries your `foreign_id`, so your own code can match on that.
 
 When something goes wrong, the recipe prints the HTTP status, the error title, detail and code, and the request id, then exits with code 1. It never prints your headers. Quote the request id if you contact support.
 

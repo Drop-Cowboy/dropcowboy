@@ -6,9 +6,9 @@
 //   callback  The unsigned body POSTed to a send's callback_url. It echoes your
 //             foreign_id and names the recipient in phone_number and the
 //             number the platform sent from in caller_id.
-//   webhook   A signed contact.rvm.status or contact.rvm.receipt event. It does
-//             not carry foreign_id; the recipient is data.to and the number
-//             the platform sent from is data.from.
+//   webhook   A signed contact.rvm.status or contact.rvm.receipt event. It
+//             echoes foreign_id in data.foreign_id; the recipient is data.to
+//             and the number the platform sent from is data.from.
 
 const STATUS_EVENT = 'contact.rvm.status';
 const RECEIPT_EVENT = 'contact.rvm.receipt';

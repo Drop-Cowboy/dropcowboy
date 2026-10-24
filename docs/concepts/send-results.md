@@ -36,8 +36,8 @@ Each send ends with a `status` (`success` or `failure`) and a numeric
 - and in **Settings > API Logs** in the dashboard.
 
 `message_id` is not on the result. To match a result to your request, put your
-own `foreign_id` on the send; the callback echoes it back. Status webhooks
-don't carry `foreign_id`, so match those on `to` or `contact_id`.
+own `foreign_id` on the send. The callback and the status webhooks
+(`contact.rvm.status`, `contact.sms.status`) both echo it back, so match on it.
 
 Branch on `reason_code`, not on the `reason` text. The text can change; the
 number can't. The ones you'll meet first:

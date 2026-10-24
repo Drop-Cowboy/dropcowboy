@@ -199,7 +199,7 @@ Result (from the callback):
 
 A `202` means the request was accepted and queued. It does not mean the voicemail reached anyone. The result arrives afterwards as a `status` and a `reason_code`; [Outcomes](https://www.dropcowboy.com/developers/api/outcomes) lists each one.
 
-A status webhook does not carry your `foreign_id`, so the recipes match it on the recipient number. A callback does carry it, and is matched on that. A receipt event reports a later stage and does not end the wait.
+The recipes match a status webhook on the recipient number and a callback on your `foreign_id`. Both carry `foreign_id`, so your own code can match either on it. A receipt event reports a later stage and does not end the wait.
 
 If no result arrives in time, the recipe says so and exits with code 0. The result can still arrive later, at a receiver you keep running or on your webhook.
 
